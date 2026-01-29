@@ -127,35 +127,55 @@ async function getBisonApiKey(clientName: string): Promise<string | null> {
 async function makeBisonRequest<T>(
   endpoint: string,
   apiKey: string,
-  params: Record<string, string> = {}
+  options: {
+    method?: 'GET' | 'POST'
+    params?: Record<string, string>
+    body?: Record<string, any>
+  } = {}
 ): Promise<T> {
   if (!apiKey) {
     throw new Error('Bison API key is required')
   }
 
-  // Build query string
+  const { method = 'GET', params = {}, body } = options
+
+  // Build query string for GET requests
   const queryParams = new URLSearchParams(params)
-  const url = `${BISON_API_BASE_URL}${endpoint}?${queryParams.toString()}`
+  const url = method === 'GET' && Object.keys(params).length > 0
+    ? `${BISON_API_BASE_URL}${endpoint}?${queryParams.toString()}`
+    : `${BISON_API_BASE_URL}${endpoint}`
 
   try {
     const response = await fetch(url, {
-      method: 'GET',
+      method,
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
+      body: body ? JSON.stringify(body) : undefined,
       cache: 'no-store',
     })
 
     if (!response.ok) {
+      // Try to get error details from response body
+      let errorDetails = ''
+      try {
+        const errorBody = await response.text()
+        errorDetails = errorBody ? ` - ${errorBody}` : ''
+      } catch (e) {
+        // Ignore if we can't read the error body
+      }
+
       if (response.status === 401) {
-        throw new Error('Invalid Bison API key')
+        throw new Error(`Invalid Bison API key${errorDetails}`)
       } else if (response.status === 404) {
-        throw new Error('Resource not found')
+        throw new Error(`Resource not found${errorDetails}`)
       } else if (response.status === 429) {
-        throw new Error('Rate limit exceeded')
+        throw new Error(`Rate limit exceeded${errorDetails}`)
+      } else if (response.status === 422) {
+        throw new Error(`Unprocessable request${errorDetails}`)
       } else {
-        throw new Error(`Bison API error: ${response.statusText}`)
+        throw new Error(`Bison API error: ${response.statusText}${errorDetails}`)
       }
     }
 
@@ -222,6 +242,198 @@ async function fetchSenderEmailAccounts(apiKey: string): Promise<BisonSenderAcco
  * Retrieves email accounts with warmup statistics for the specified date range
  * Automatically paginates to fetch ALL mailboxes (Bison returns 15 per page)
  */
+/**
+ * List all campaigns for a Bison client
+ * Endpoint: POST /campaigns
+ */
+export async function listBisonCampaigns(options: {
+  clientName: string
+  status?: string // e.g., 'active', 'paused', 'draft', etc.
+}): Promise<{
+  success: boolean
+  client_name: string
+  total_campaigns: number
+  campaigns: Array<{
+    id: string
+    name: string
+    status: string
+  }>
+  error?: string
+}> {
+  try {
+    const { clientName, status } = options
+
+    console.log(`Fetching Bison campaigns for ${clientName}...`)
+
+    // Get API key from Google Sheet
+    const apiKey = await getBisonApiKey(clientName)
+    if (!apiKey) {
+      throw new Error(`No API key found for client '${clientName}'`)
+    }
+
+    // Try using GET request instead of POST for listing campaigns
+    // Add pagination support
+    const allCampaigns: any[] = []
+    const maxPages = 50
+
+    for (let page = 1; page <= maxPages; page++) {
+      console.log(`Fetching campaigns page ${page}`)
+
+      try {
+        const response = await makeBisonRequest<{ data: any[] }>(
+          '/campaigns',
+          apiKey,
+          {
+            method: 'GET',
+            params: { page: String(page) }
+          }
+        )
+
+        console.log(`Bison API response page ${page}:`, JSON.stringify(response))
+
+        const pageData = response.data || []
+        console.log(`Page ${page} returned ${Array.isArray(pageData) ? pageData.length : 'non-array'} campaigns`)
+
+        if (!Array.isArray(pageData) || pageData.length === 0) {
+          break
+        }
+
+        allCampaigns.push(...pageData)
+
+        // Check if there's more data (Bison typically returns 15 per page)
+        if (pageData.length < 15) {
+          break
+        }
+      } catch (error) {
+        console.warn(`Error fetching campaigns page ${page}:`, error)
+        break
+      }
+    }
+
+    console.log(`✓ Loaded ${allCampaigns.length} total campaigns`)
+
+    // Format campaigns
+    const formattedCampaigns = allCampaigns.map((c: any) => ({
+      id: String(c.id),
+      name: c.name || 'Untitled Campaign',
+      status: c.status || 'unknown'
+    }))
+
+    return {
+      success: true,
+      client_name: clientName,
+      total_campaigns: formattedCampaigns.length,
+      campaigns: formattedCampaigns,
+    }
+
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    console.error('Error in listBisonCampaigns:', errorMsg)
+
+    return {
+      success: false,
+      client_name: options.clientName,
+      total_campaigns: 0,
+      campaigns: [],
+      error: errorMsg,
+    }
+  }
+}
+
+/**
+ * Get detailed campaign information including email sequences
+ * Endpoint: GET /campaigns/v1.1/{id}/sequence-steps
+ */
+export async function getBisonCampaignDetails(options: {
+  clientName: string
+  campaignId: string
+  campaignName?: string
+}): Promise<{
+  success: boolean
+  campaign_id: string
+  campaign_name: string
+  platform: string
+  sequences: Array<{
+    step: number
+    subject: string
+    body: string
+    wait_days: number
+    order: number
+    thread_reply: boolean
+    variant?: boolean
+  }>
+  error?: string
+}> {
+  try {
+    const { clientName, campaignId, campaignName } = options
+
+    console.log(`Fetching Bison campaign sequence steps for ${campaignId}...`)
+
+    // Get API key from Google Sheet
+    const apiKey = await getBisonApiKey(clientName)
+    if (!apiKey) {
+      throw new Error(`No API key found for client '${clientName}'`)
+    }
+
+    // Fetch campaign sequence steps using the correct endpoint
+    const response = await makeBisonRequest<{
+      data: {
+        sequence_id: number
+        sequence_steps: Array<{
+          id: number
+          email_subject: string
+          order: string
+          email_body: string
+          wait_in_days: string
+          variant: boolean
+          variant_from_step_id: number | null
+          attachments: any[]
+          thread_reply: boolean
+        }>
+      }
+    }>(
+      `/campaigns/v1.1/${campaignId}/sequence-steps`,
+      apiKey
+    )
+
+    const sequenceSteps = response.data?.sequence_steps || []
+
+    // Format sequences to match our interface
+    const sequences = sequenceSteps.map((seq, index) => ({
+      step: parseInt(seq.order) || (index + 1),
+      subject: seq.email_subject || '',
+      body: seq.email_body || '',
+      wait_days: parseInt(seq.wait_in_days) || 0,
+      order: parseInt(seq.order) || (index + 1),
+      thread_reply: seq.thread_reply || false,
+      variant: seq.variant || false
+    }))
+
+    console.log(`✓ Loaded campaign with ${sequences.length} sequence steps`)
+
+    return {
+      success: true,
+      campaign_id: campaignId,
+      campaign_name: campaignName || `Campaign ${campaignId}`,
+      platform: 'bison',
+      sequences,
+    }
+
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+    console.error('Error in getBisonCampaignDetails:', errorMsg)
+
+    return {
+      success: false,
+      campaign_id: options.campaignId,
+      campaign_name: '',
+      platform: 'bison',
+      sequences: [],
+      error: errorMsg,
+    }
+  }
+}
+
 export async function listBisonSenderEmails(options: {
   clientName: string
   startDate?: string // YYYY-MM-DD format

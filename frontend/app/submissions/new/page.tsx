@@ -15,7 +15,8 @@ import {
   Video,
   Sparkles,
   Info,
-  Search
+  Search,
+  Upload
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -32,6 +33,89 @@ interface ValidationResult {
   status: ValidationStatus
   message: string
   details?: string[]
+}
+
+// Utility function to convert HTML to plain text
+function htmlToText(html: string): string {
+  if (!html) return ''
+
+  // Create a temporary div to parse HTML
+  const temp = document.createElement('div')
+  temp.innerHTML = html
+
+  // Get text content and clean up whitespace
+  let text = temp.textContent || temp.innerText || ''
+
+  // Clean up excessive whitespace
+  text = text.replace(/\n\s*\n/g, '\n\n') // Multiple newlines to double newline
+  text = text.replace(/[ \t]+/g, ' ') // Multiple spaces to single space
+  text = text.trim()
+
+  return text
+}
+
+// Parse spintax to extract variants
+function parseSpintax(text: string): { hasSpintax: boolean; variants: string[] } {
+  const spintaxPattern = /\{([^}]+)\}/g
+  const matches = text.match(spintaxPattern)
+
+  if (!matches) {
+    return { hasSpintax: false, variants: [] }
+  }
+
+  // Extract all unique spintax groups
+  const allVariants: string[][] = []
+  matches.forEach(match => {
+    const content = match.slice(1, -1) // Remove { }
+    if (content.includes('|')) {
+      const options = content.split('|')
+      allVariants.push(options)
+    }
+  })
+
+  if (allVariants.length === 0) {
+    return { hasSpintax: false, variants: [] }
+  }
+
+  return {
+    hasSpintax: true,
+    variants: allVariants.flat()
+  }
+}
+
+// Highlight merge fields in text
+function highlightMergeFields(text: string): React.ReactNode[] {
+  if (!text) return [text]
+
+  const mergeFieldPattern = /(\{[A-Z_]+\})/g
+  const parts = text.split(mergeFieldPattern)
+
+  return parts.map((part, index) => {
+    if (part.match(mergeFieldPattern)) {
+      return (
+        <span
+          key={index}
+          className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono bg-blue-100 text-blue-700 border border-blue-200"
+        >
+          {part}
+        </span>
+      )
+    }
+    return <span key={index}>{part}</span>
+  })
+}
+
+// Get status badge color and label
+function getStatusBadge(status: string): { color: string; label: string; icon: string } {
+  const statusMap: Record<string, { color: string; label: string; icon: string }> = {
+    active: { color: 'bg-green-100 text-green-700 border-green-200', label: 'Active', icon: '🟢' },
+    completed: { color: 'bg-yellow-100 text-yellow-700 border-yellow-200', label: 'Completed', icon: '🟡' },
+    archived: { color: 'bg-gray-100 text-gray-700 border-gray-200', label: 'Archived', icon: '⚪' },
+    paused: { color: 'bg-orange-100 text-orange-700 border-orange-200', label: 'Paused', icon: '🟠' },
+    draft: { color: 'bg-purple-100 text-purple-700 border-purple-200', label: 'Draft', icon: '🟣' },
+  }
+
+  return statusMap[status.toLowerCase()] || { color: 'bg-gray-100 text-gray-600 border-gray-200', label: status, icon: '⚫' }
 }
 
 export default function NewSubmissionPage() {
@@ -108,6 +192,33 @@ export default function NewSubmissionPage() {
   } | null>(null)
   const [loadingMailboxes, setLoadingMailboxes] = useState(false)
 
+  // Campaign details state (array of all campaigns)
+  const [expandedCampaigns, setExpandedCampaigns] = useState<Set<string>>(new Set())
+  const [expandedLeadLists, setExpandedLeadLists] = useState<Set<string>>(new Set())
+  const [campaignLeadLists, setCampaignLeadLists] = useState<Record<string, {
+    file: File | null
+    leadCount: number
+    sampleLeads: Array<Record<string, any>>
+    validated: boolean
+    issues: string[]
+  }>>({})
+  const [uploadingLeadList, setUploadingLeadList] = useState<string | null>(null)
+  const [campaignDetails, setCampaignDetails] = useState<Array<{
+    campaign_id: string
+    campaign_name: string
+    platform: string
+    status?: string
+    sequences: Array<{
+      step: number
+      subject: string
+      body: string
+      wait_days?: number
+      delay_hours?: number
+      variants?: Array<{ subject: string; body: string }>
+    }>
+  }> | null>(null)
+  const [loadingCampaignDetails, setLoadingCampaignDetails] = useState(false)
+
   const [validations, setValidations] = useState({
     strategyCall: { status: 'idle', message: '' } as ValidationResult,
     infrastructure: { status: 'idle', message: '' } as ValidationResult,
@@ -119,8 +230,8 @@ export default function NewSubmissionPage() {
   const tabs = [
     { id: 'strategy-call', label: 'Strategy Call', icon: FileText, key: 'strategyCall' },
     { id: 'infrastructure', label: 'Infrastructure', icon: Settings, key: 'infrastructure' },
-    { id: 'lead-list', label: 'Lead List', icon: Users, key: 'leadList' },
     { id: 'email-copy', label: 'Email Copy', icon: Mail, key: 'emailCopy' },
+    { id: 'lead-list', label: 'Lead List', icon: Users, key: 'leadList' },
     { id: 'loom-video', label: 'Loom Video', icon: Video, key: 'loom' }
   ]
 
@@ -271,6 +382,126 @@ export default function NewSubmissionPage() {
       console.error('Error loading mailboxes:', error)
     } finally {
       setLoadingMailboxes(false)
+    }
+  }
+
+  const handleLeadListUpload = async (campaignId: string, file: File) => {
+    if (!file) return
+
+    setUploadingLeadList(campaignId)
+
+    try {
+      // Read CSV file
+      const text = await file.text()
+      const lines = text.trim().split('\n')
+
+      if (lines.length < 2) {
+        alert('CSV file appears to be empty or invalid')
+        return
+      }
+
+      // Parse CSV header
+      const headers = lines[0].split(',').map(h => h.trim().replace(/['"]/g, ''))
+
+      // Parse CSV rows (first 10 as sample)
+      const sampleLeads: Array<Record<string, any>> = []
+      const maxSamples = Math.min(10, lines.length - 1)
+
+      for (let i = 1; i <= maxSamples; i++) {
+        const values = lines[i].split(',').map(v => v.trim().replace(/['"]/g, ''))
+        const lead: Record<string, any> = {}
+
+        headers.forEach((header, index) => {
+          lead[header] = values[index] || ''
+        })
+
+        sampleLeads.push(lead)
+      }
+
+      // Basic validation checks
+      const issues: string[] = []
+
+      // Check for required fields
+      const requiredFields = ['email', 'first_name', 'last_name', 'company']
+      requiredFields.forEach(field => {
+        const hasField = headers.some(h => h.toLowerCase().includes(field.replace('_', '')))
+        if (!hasField) {
+          issues.push(`Missing recommended field: ${field}`)
+        }
+      })
+
+      // Store lead list data
+      setCampaignLeadLists(prev => ({
+        ...prev,
+        [campaignId]: {
+          file,
+          leadCount: lines.length - 1,
+          sampleLeads,
+          validated: false,
+          issues
+        }
+      }))
+
+      // Auto-expand this campaign's lead list section
+      setExpandedLeadLists(prev => new Set([...prev, campaignId]))
+
+    } catch (error) {
+      console.error('Error parsing CSV:', error)
+      alert('Failed to parse CSV file. Please check the file format.')
+    } finally {
+      setUploadingLeadList(null)
+    }
+  }
+
+  const loadAllCampaignDetails = async () => {
+    if (!formData.clientName || campaigns.length === 0) {
+      console.error('Need client name and campaigns to load campaign details')
+      return
+    }
+
+    try {
+      setLoadingCampaignDetails(true)
+
+      // Fetch details for all campaigns
+      const allCampaignDetails = await Promise.all(
+        campaigns.map(async (campaign) => {
+          try {
+            const response = await fetch(
+              `/api/campaigns/details?clientName=${encodeURIComponent(formData.clientName)}&campaignId=${encodeURIComponent(campaign.id)}&campaignName=${encodeURIComponent(campaign.name)}&platform=${formData.platform}`
+            )
+            const data = await response.json()
+
+            if (data.success) {
+              return {
+                campaign_id: campaign.id,
+                campaign_name: data.campaign_name,
+                platform: data.platform,
+                status: campaign.status || 'unknown',
+                sequences: data.sequences,
+              }
+            }
+            return null
+          } catch (error) {
+            console.error(`Failed to load campaign ${campaign.id}:`, error)
+            return null
+          }
+        })
+      )
+
+      // Filter out failed requests and set state
+      const validCampaigns = allCampaignDetails.filter(c => c !== null)
+
+      if (validCampaigns.length > 0) {
+        setCampaignDetails(validCampaigns as any)
+        // Expand all campaigns by default when first loaded
+        setExpandedCampaigns(new Set(validCampaigns.map(c => c!.campaign_id)))
+      } else {
+        console.error('Failed to load any campaign details')
+      }
+    } catch (error) {
+      console.error('Error loading campaign details:', error)
+    } finally {
+      setLoadingCampaignDetails(false)
     }
   }
 
@@ -1196,89 +1427,7 @@ export default function NewSubmissionPage() {
             </Card>
           </TabsContent>
 
-          {/* Step 3: Lead List */}
-          <TabsContent value="lead-list" className="space-y-6">
-            <Card className="shadow-medium">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
-                    <Users size={20} className="text-gray-700" />
-                  </div>
-                  Lead List Validation
-                </CardTitle>
-                <CardDescription>
-                  Validate lead list quality and ICP matching against strategy call
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid gap-6">
-                  <div className="grid sm:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="leadCount">Total Lead Count *</Label>
-                      <Input
-                        id="leadCount"
-                        type="number"
-                        value={formData.leadCount}
-                        onChange={(e) => setFormData({ ...formData, leadCount: e.target.value })}
-                        placeholder="e.g., 2847"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="leadListUrl">Lead List URL *</Label>
-                      <Input
-                        id="leadListUrl"
-                        type="url"
-                        value={formData.leadListUrl}
-                        onChange={(e) => setFormData({ ...formData, leadListUrl: e.target.value })}
-                        placeholder="CSV or Google Sheets URL"
-                      />
-                    </div>
-                  </div>
-
-                  <Card className="bg-blue-50/50 border-blue-200">
-                    <CardContent className="p-4">
-                      <div className="flex gap-3">
-                        <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
-                        <div className="space-y-1 text-sm text-blue-900">
-                          <p className="font-medium">What we check:</p>
-                          <ul className="text-blue-800 space-y-0.5 text-xs">
-                            <li>• Data quality (email validation, required fields)</li>
-                            <li>• ICP match rate against strategy call</li>
-                            <li>• Job title compliance (VP+ requirement)</li>
-                            <li>• Company size alignment</li>
-                          </ul>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <Button
-                  onClick={() => handleValidate('leadList')}
-                  disabled={!formData.leadListUrl || !formData.leadCount || validations.leadList.status === 'validating'}
-                  className="w-full shadow-lg"
-                  size="lg"
-                >
-                  {validations.leadList.status === 'validating' ? (
-                    <>
-                      <Loader2 className="animate-spin" size={20} />
-                      Analyzing Lead List...
-                    </>
-                  ) : (
-                    <>
-                      <Users size={20} />
-                      Validate Lead List
-                    </>
-                  )}
-                </Button>
-
-                {getValidationCard(validations.leadList)}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Step 4: Email Copy */}
+          {/* Step 3: Email Copy */}
           <TabsContent value="email-copy" className="space-y-6">
             <Card className="shadow-medium">
               <CardHeader>
@@ -1289,55 +1438,276 @@ export default function NewSubmissionPage() {
                   Email Copy Validation
                 </CardTitle>
                 <CardDescription>
-                  Validate email sequence for spam score, quality, and best practices
+                  Validate email sequences align with ICP, strategy call transcript, and agreed messaging
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid gap-6">
-                  <Card className="bg-amber-50/50 border-amber-200">
-                    <CardContent className="p-4">
-                      <div className="flex gap-3">
-                        <Info size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                        <div className="space-y-1 text-sm text-amber-900">
-                          <p className="font-medium">Email copy is automatically pulled from:</p>
-                          <p className="text-amber-800 text-xs">
-                            Campaign ID: <span className="font-mono bg-amber-100 px-1 rounded">{formData.campaignId || 'Not set'}</span>
+                  {!formData.clientId && (
+                    <Card className="bg-amber-50/50 border-amber-200">
+                      <CardContent className="p-4">
+                        <div className="flex gap-3">
+                          <Info size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                          <p className="text-sm text-amber-900">
+                            Please select a client in Step 1 first
                           </p>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                      </CardContent>
+                    </Card>
+                  )}
 
-                  <Card className="bg-blue-50/50 border-blue-200">
-                    <CardContent className="p-4">
-                      <div className="flex gap-3">
-                        <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
-                        <div className="space-y-1 text-sm text-blue-900">
-                          <p className="font-medium">What we check:</p>
-                          <ul className="text-blue-800 space-y-0.5 text-xs">
-                            <li>• Spam score (must be under 5.0 for each email)</li>
-                            <li>• Quality score based on best practices</li>
-                            <li>• Trigger word detection</li>
-                            <li>• Link count (max 2 recommended)</li>
-                            <li>• Personalization usage</li>
-                            <li>• Alignment with ICP and value prop</li>
-                          </ul>
+                  {formData.clientId && campaigns.length === 0 && (
+                    <Card className="bg-amber-50/50 border-amber-200">
+                      <CardContent className="p-4">
+                        <div className="flex gap-3">
+                          <Info size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                          <p className="text-sm text-amber-900">
+                            No campaigns found for this client
+                          </p>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {formData.clientId && campaigns.length > 0 && (
+                    <>
+                      <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
+                        <CardContent className="p-6 space-y-4">
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                              <Mail size={20} className="text-purple-700" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-semibold text-gray-900 mb-1">Load All Campaign Email Sequences</p>
+                              <p className="text-sm text-gray-700 mb-2">
+                                Extract email copy from all {campaigns.length} campaign{campaigns.length > 1 ? 's' : ''} for {formData.clientName}
+                              </p>
+                            </div>
+                          </div>
+
+                          <Button
+                            onClick={loadAllCampaignDetails}
+                            disabled={loadingCampaignDetails}
+                            className="w-full shadow-sm bg-purple-600 hover:bg-purple-700 text-white"
+                            size="lg"
+                          >
+                            {loadingCampaignDetails ? (
+                              <>
+                                <Loader2 className="animate-spin" size={18} />
+                                Loading All Campaigns...
+                              </>
+                            ) : (
+                              <>
+                                <Mail size={18} />
+                                Load All Campaign Copy
+                              </>
+                            )}
+                          </Button>
+
+                          {campaignDetails && (
+                            <div className="mt-4 pt-4 border-t border-purple-200 space-y-3">
+                              <p className="text-sm text-emerald-700 flex items-center gap-2">
+                                <CheckCircle size={16} />
+                                Loaded {campaignDetails.length} campaign{campaignDetails.length > 1 ? 's' : ''} with {campaignDetails.reduce((sum, c) => sum + c.sequences.length, 0)} total email sequences
+                              </p>
+                              <Button
+                                onClick={() => {
+                                  if (expandedCampaigns.size === campaignDetails.length) {
+                                    // Collapse all
+                                    setExpandedCampaigns(new Set())
+                                  } else {
+                                    // Expand all
+                                    setExpandedCampaigns(new Set(campaignDetails.map(c => c.campaign_id)))
+                                  }
+                                }}
+                                variant="outline"
+                                size="sm"
+                                className="w-full text-xs"
+                              >
+                                {expandedCampaigns.size === campaignDetails.length ? (
+                                  <>
+                                    <svg className="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                    Collapse All Campaigns
+                                  </>
+                                ) : (
+                                  <>
+                                    <svg className="w-3 h-3 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                    Expand All Campaigns
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+
+                      {/* Display All Campaigns - Collapsible */}
+                      {campaignDetails && campaignDetails.map((campaign, campaignIndex) => {
+                        const isExpanded = expandedCampaigns.has(campaign.campaign_id)
+                        const statusBadge = getStatusBadge(campaign.status || 'unknown')
+
+                        return (
+                          <Card key={campaign.campaign_id} className="bg-white border-gray-300 shadow-sm">
+                            <CardContent className="p-0">
+                              {/* Campaign Header - Clickable */}
+                              <button
+                                onClick={() => {
+                                  const newExpanded = new Set(expandedCampaigns)
+                                  if (isExpanded) {
+                                    newExpanded.delete(campaign.campaign_id)
+                                  } else {
+                                    newExpanded.add(campaign.campaign_id)
+                                  }
+                                  setExpandedCampaigns(newExpanded)
+                                }}
+                                className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                              >
+                                <div className="flex items-center gap-3 flex-1">
+                                  <div className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                                    <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                  </div>
+                                  <div className="text-left flex-1">
+                                    <p className="text-sm font-bold text-gray-900">
+                                      {campaign.campaign_name}
+                                    </p>
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                      {campaign.sequences.length} email{campaign.sequences.length > 1 ? 's' : ''} in sequence
+                                    </p>
+                                  </div>
+                                  <span className={`text-xs px-2 py-1 rounded-md border font-medium ${statusBadge.color}`}>
+                                    {statusBadge.icon} {statusBadge.label}
+                                  </span>
+                                </div>
+                              </button>
+
+                              {/* Campaign Sequences - Collapsible Content */}
+                              {isExpanded && (
+                                <div className="border-t border-gray-200 p-4 space-y-3 bg-gray-50">
+                                  {campaign.sequences.map((seq, index) => {
+                                    const cleanBody = htmlToText(seq.body)
+                                    const spintaxInfo = parseSpintax(cleanBody)
+
+                                    return (
+                                      <Card key={index} className="bg-white border-gray-200 shadow-sm">
+                                        <CardContent className="p-4">
+                                          <div className="space-y-3">
+                                            {/* Email Step Header */}
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xs font-bold px-2.5 py-1 rounded-md bg-purple-100 text-purple-700 border border-purple-200">
+                                                Email {seq.step}
+                                              </span>
+                                              {(seq.wait_days !== undefined || seq.delay_hours !== undefined) && seq.step > 1 && (
+                                                <span className="text-xs text-gray-500 flex items-center gap-1">
+                                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                  </svg>
+                                                  Wait: {seq.wait_days ? `${seq.wait_days} day${seq.wait_days > 1 ? 's' : ''}` : `${seq.delay_hours} hour${seq.delay_hours > 1 ? 's' : ''}`}
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            {/* Subject Line */}
+                                            <div>
+                                              <p className="text-xs text-gray-600 mb-1.5 font-medium">Subject Line:</p>
+                                              <div className="text-sm font-semibold text-gray-900 bg-blue-50 p-2.5 rounded border border-blue-100">
+                                                {highlightMergeFields(seq.subject)}
+                                              </div>
+                                            </div>
+
+                                            {/* Email Body */}
+                                            <div>
+                                              <div className="flex items-center justify-between mb-1.5">
+                                                <p className="text-xs text-gray-600 font-medium">Email Body:</p>
+                                                {spintaxInfo.hasSpintax && (
+                                                  <span className="text-xs px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 border border-amber-200">
+                                                    {spintaxInfo.variants.length} variant{spintaxInfo.variants.length > 1 ? 's' : ''}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="text-sm text-gray-700 leading-relaxed bg-gray-50 p-3 rounded border border-gray-200 max-h-64 overflow-y-auto">
+                                                {highlightMergeFields(cleanBody)}
+                                              </div>
+                                            </div>
+
+                                            {/* Spintax Variants Display */}
+                                            {spintaxInfo.hasSpintax && (
+                                              <div className="pt-2 border-t border-gray-200">
+                                                <p className="text-xs text-gray-600 mb-2 font-medium">Copy Variations:</p>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                  {spintaxInfo.variants.slice(0, 6).map((variant, vIndex) => (
+                                                    <span
+                                                      key={vIndex}
+                                                      className="text-xs px-2 py-1 rounded bg-amber-50 text-amber-800 border border-amber-200"
+                                                    >
+                                                      {variant}
+                                                    </span>
+                                                  ))}
+                                                  {spintaxInfo.variants.length > 6 && (
+                                                    <span className="text-xs px-2 py-1 text-gray-500">
+                                                      +{spintaxInfo.variants.length - 6} more
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+
+                                            {/* A/B Test Variants (from API) */}
+                                            {seq.variants && seq.variants.length > 0 && (
+                                              <div className="pt-2 border-t border-gray-200">
+                                                <p className="text-xs text-gray-600 mb-2 font-medium">
+                                                  A/B Test Variants: {seq.variants.length}
+                                                </p>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </CardContent>
+                                      </Card>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        )
+                      })}
+
+                      <Card className="bg-blue-50/50 border-blue-200">
+                        <CardContent className="p-4">
+                          <div className="flex gap-3">
+                            <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                            <div className="space-y-1 text-sm text-blue-900">
+                              <p className="font-medium">What we validate across all campaigns:</p>
+                              <ul className="text-blue-800 space-y-0.5 text-xs">
+                                <li>• Alignment with ICP from strategy call</li>
+                                <li>• Messaging matches pain points in transcript</li>
+                                <li>• Value proposition consistency</li>
+                                <li>• Personalization strategy alignment</li>
+                                <li>• Tone and approach match agreed strategy</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </>
+                  )}
                 </div>
 
                 <Button
                   onClick={() => handleValidate('emailCopy')}
-                  disabled={!formData.campaignId || validations.emailCopy.status === 'validating'}
+                  disabled={!campaignDetails || validations.emailCopy.status === 'validating'}
                   className="w-full shadow-lg"
                   size="lg"
                 >
                   {validations.emailCopy.status === 'validating' ? (
                     <>
                       <Loader2 className="animate-spin" size={20} />
-                      Analyzing Email Copy...
+                      Validating Strategy Alignment...
                     </>
                   ) : (
                     <>
@@ -1348,6 +1718,236 @@ export default function NewSubmissionPage() {
                 </Button>
 
                 {getValidationCard(validations.emailCopy)}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Step 4: Lead List */}
+          <TabsContent value="lead-list" className="space-y-6">
+            <Card className="shadow-medium">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center">
+                    <Users size={20} className="text-gray-700" />
+                  </div>
+                  Lead List Validation
+                </CardTitle>
+                <CardDescription>
+                  Upload and validate lead lists for each campaign against ICP
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {!campaigns || campaigns.length === 0 ? (
+                  <Card className="bg-amber-50/50 border-amber-200">
+                    <CardContent className="p-4">
+                      <div className="flex gap-3">
+                        <AlertTriangle size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                        <p className="text-sm text-amber-900">
+                          Please select a client in Step 1 first to load campaigns
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <>
+                    <Card className="bg-blue-50/50 border-blue-200">
+                      <CardContent className="p-4">
+                        <div className="flex gap-3">
+                          <Info size={16} className="text-blue-600 flex-shrink-0 mt-0.5" />
+                          <div className="space-y-1 text-sm text-blue-900">
+                            <p className="font-medium">What we validate for each list:</p>
+                            <ul className="text-blue-800 space-y-0.5 text-xs">
+                              <li>• Campaign-to-list alignment (right audience for message)</li>
+                              <li>• ICP match rate against strategy call</li>
+                              <li>• Data quality (email validation, required fields)</li>
+                              <li>• Job title/seniority compliance</li>
+                              <li>• Company size and industry alignment</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Campaign Lead Lists */}
+                    {campaigns.map((campaign) => {
+                      const isExpanded = expandedLeadLists.has(campaign.id)
+                      const leadList = campaignLeadLists[campaign.id]
+                      const statusBadge = getStatusBadge(campaign.status || 'unknown')
+
+                      return (
+                        <Card key={campaign.id} className="bg-white border-gray-300 shadow-sm">
+                          <CardContent className="p-0">
+                            {/* Campaign Header */}
+                            <button
+                              onClick={() => {
+                                const newExpanded = new Set(expandedLeadLists)
+                                if (isExpanded) {
+                                  newExpanded.delete(campaign.id)
+                                } else {
+                                  newExpanded.add(campaign.id)
+                                }
+                                setExpandedLeadLists(newExpanded)
+                              }}
+                              className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                            >
+                              <div className="flex items-center gap-3 flex-1">
+                                <div className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                                  <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                  </svg>
+                                </div>
+                                <div className="text-left flex-1">
+                                  <p className="text-sm font-bold text-gray-900">
+                                    {campaign.name}
+                                  </p>
+                                  {leadList ? (
+                                    <p className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
+                                      <CheckCircle size={12} />
+                                      {leadList.leadCount.toLocaleString()} leads uploaded
+                                    </p>
+                                  ) : (
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                      No lead list uploaded
+                                    </p>
+                                  )}
+                                </div>
+                                <span className={`text-xs px-2 py-1 rounded-md border font-medium ${statusBadge.color}`}>
+                                  {statusBadge.icon} {statusBadge.label}
+                                </span>
+                              </div>
+                            </button>
+
+                            {/* Lead List Upload & Details */}
+                            {isExpanded && (
+                              <div className="border-t border-gray-200 p-4 space-y-4 bg-gray-50">
+                                {/* File Upload */}
+                                {!leadList ? (
+                                  <div className="space-y-3">
+                                    <label className="block">
+                                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors cursor-pointer">
+                                        <input
+                                          type="file"
+                                          accept=".csv"
+                                          className="hidden"
+                                          onChange={(e) => {
+                                            const file = e.target.files?.[0]
+                                            if (file) {
+                                              handleLeadListUpload(campaign.id, file)
+                                            }
+                                          }}
+                                          disabled={uploadingLeadList === campaign.id}
+                                        />
+                                        {uploadingLeadList === campaign.id ? (
+                                          <div className="flex flex-col items-center gap-2">
+                                            <Loader2 className="animate-spin text-gray-400" size={32} />
+                                            <p className="text-sm text-gray-600">Processing CSV...</p>
+                                          </div>
+                                        ) : (
+                                          <div className="flex flex-col items-center gap-2">
+                                            <Upload className="text-gray-400" size={32} />
+                                            <p className="text-sm font-medium text-gray-700">
+                                              Upload CSV Lead List
+                                            </p>
+                                            <p className="text-xs text-gray-500">
+                                              Click to browse or drag and drop
+                                            </p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </label>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-4">
+                                    {/* Lead List Summary */}
+                                    <Card className="bg-white border-gray-200">
+                                      <CardContent className="p-4">
+                                        <div className="flex items-start justify-between mb-3">
+                                          <div>
+                                            <p className="text-sm font-semibold text-gray-900">
+                                              {leadList.file.name}
+                                            </p>
+                                            <p className="text-xs text-gray-500 mt-0.5">
+                                              {leadList.leadCount.toLocaleString()} total leads
+                                            </p>
+                                          </div>
+                                          <button
+                                            onClick={() => {
+                                              setCampaignLeadLists(prev => {
+                                                const newLists = { ...prev }
+                                                delete newLists[campaign.id]
+                                                return newLists
+                                              })
+                                            }}
+                                            className="text-xs text-red-600 hover:text-red-700"
+                                          >
+                                            Remove
+                                          </button>
+                                        </div>
+
+                                        {/* Issues */}
+                                        {leadList.issues.length > 0 && (
+                                          <div className="mb-3">
+                                            <p className="text-xs font-medium text-amber-700 mb-1.5">
+                                              ⚠️ Potential Issues:
+                                            </p>
+                                            <ul className="space-y-1">
+                                              {leadList.issues.map((issue, idx) => (
+                                                <li key={idx} className="text-xs text-amber-600">
+                                                  • {issue}
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        )}
+
+                                        {/* Sample Leads */}
+                                        <div>
+                                          <p className="text-xs font-medium text-gray-700 mb-2">
+                                            Sample Leads (first {leadList.sampleLeads.length}):
+                                          </p>
+                                          <div className="space-y-2 max-h-64 overflow-y-auto">
+                                            {leadList.sampleLeads.map((lead, idx) => (
+                                              <div
+                                                key={idx}
+                                                className="bg-gray-50 p-2.5 rounded border border-gray-200 text-xs"
+                                              >
+                                                <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                                                  {Object.entries(lead).slice(0, 6).map(([key, value]) => (
+                                                    <div key={key}>
+                                                      <span className="text-gray-500 font-medium">{key}:</span>{' '}
+                                                      <span className="text-gray-900">{value}</span>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+
+                                    {/* Validate Button */}
+                                    <Button
+                                      onClick={() => {
+                                        // TODO: Implement validation logic
+                                        alert(`Validating lead list for ${campaign.name}`)
+                                      }}
+                                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                                      size="sm"
+                                    >
+                                      <CheckCircle size={16} />
+                                      Validate Against ICP
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

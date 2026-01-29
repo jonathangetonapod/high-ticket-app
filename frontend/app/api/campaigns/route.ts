@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { listInstantlyCampaigns } from '@/lib/instantly'
+import { listBisonCampaigns } from '@/lib/bison'
 
 export async function GET(request: Request) {
   try {
@@ -13,54 +15,42 @@ export async function GET(request: Request) {
       )
     }
 
-    // TODO: Connect to BridgeKit MCP tools
-    // if (platform === 'instantly') {
-    //   const campaigns = await fetch(`YOUR_BACKEND_URL/mcp/list_instantly_campaigns?client=${clientName}`)
-    // } else if (platform === 'bison') {
-    //   const campaigns = await fetch(`YOUR_BACKEND_URL/mcp/list_bison_campaigns?client=${clientName}`)
-    // }
+    console.log(`Fetching ${platform} campaigns for ${clientName}...`)
 
-    // For now, returning mock data structure
-    // In production, this should call:
-    // - mcp__claude_ai_BridgeKit__list_instantly_campaigns(client_name)
-    // - mcp__claude_ai_BridgeKit__list_bison_campaigns(client_name)
+    if (platform === 'instantly') {
+      const result = await listInstantlyCampaigns({ clientName })
 
-    const mockCampaigns = [
-      {
-        id: 'camp-001',
-        name: 'Q1 2025 Outreach',
-        status: 'active',
-        emailsSent: 2847,
-        replies: 143,
-        interested: 28,
-      },
-      {
-        id: 'camp-002',
-        name: 'VP Sales Follow-up',
-        status: 'active',
-        emailsSent: 1523,
-        replies: 89,
-        interested: 15,
-      },
-      {
-        id: 'camp-003',
-        name: 'Enterprise Prospects',
-        status: 'paused',
-        emailsSent: 892,
-        replies: 54,
-        interested: 12,
-      },
-      {
-        id: 'camp-004',
-        name: 'Webinar Promotion',
-        status: 'active',
-        emailsSent: 3421,
-        replies: 201,
-        interested: 45,
-      },
-    ]
+      if (result.success) {
+        return NextResponse.json({
+          success: true,
+          campaigns: result.campaigns
+        })
+      } else {
+        return NextResponse.json({
+          success: false,
+          error: result.error || 'Failed to fetch Instantly campaigns'
+        }, { status: 500 })
+      }
+    } else if (platform === 'bison') {
+      const result = await listBisonCampaigns({ clientName, status: 'all' })
 
-    return NextResponse.json({ success: true, campaigns: mockCampaigns })
+      if (result.success) {
+        return NextResponse.json({
+          success: true,
+          campaigns: result.campaigns
+        })
+      } else {
+        return NextResponse.json({
+          success: false,
+          error: result.error || 'Failed to fetch Bison campaigns'
+        }, { status: 500 })
+      }
+    } else {
+      return NextResponse.json(
+        { success: false, error: 'Invalid platform' },
+        { status: 400 }
+      )
+    }
   } catch (error) {
     console.error('Error fetching campaigns:', error)
     return NextResponse.json(
