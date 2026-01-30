@@ -3,6 +3,13 @@
 
 const INSTANTLY_API_BASE_URL = 'https://api.instantly.ai/api/v2'
 
+// Cache for API keys to avoid repeated Google Sheets fetches
+const apiKeyCache = new Map<string, { key: string; timestamp: number }>()
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+// In-flight request deduplication - share promises for concurrent requests
+const inFlightRequests = new Map<string, Promise<string | null>>()
+
 interface InstantlyCampaign {
   id: string
   name: string
@@ -24,13 +31,56 @@ interface InstantlySequenceStep {
 }
 
 /**
- * Get Instantly API key for a client from Google Sheets
+ * Get Instantly API key for a client from Google Sheets (with caching and deduplication)
  */
 async function getInstantlyApiKey(clientName: string): Promise<string | null> {
+  const cacheKey = clientName.toLowerCase()
+
   try {
+    // Check cache first
+    const cached = apiKeyCache.get(cacheKey)
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      console.log(`✓ Using cached API key for '${clientName}'`)
+      return cached.key
+    }
+
+    // Check if there's already a request in flight for this client
+    const inFlight = inFlightRequests.get(cacheKey)
+    if (inFlight) {
+      console.log(`⏳ Waiting for in-flight API key request for '${clientName}'`)
+      return await inFlight
+    }
+
+    // Create a new fetch promise
+    const fetchPromise = (async () => {
+      try {
+        return await fetchApiKeyFromSheet(clientName)
+      } finally {
+        // Remove from in-flight after completion
+        inFlightRequests.delete(cacheKey)
+      }
+    })()
+
+    // Store the promise so other concurrent requests can reuse it
+    inFlightRequests.set(cacheKey, fetchPromise)
+
+    return await fetchPromise
+  } catch (error) {
+    console.error('Error fetching Instantly API key:', error)
+    inFlightRequests.delete(cacheKey)
+    return null
+  }
+}
+
+/**
+ * Internal function to fetch API key from Google Sheets
+ */
+async function fetchApiKeyFromSheet(clientName: string): Promise<string | null> {
+  try {
+
     // Fetch from the same Google Sheet we use for client listing
     const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1CNejGg-egkp28ItSRfW7F_CkBXgYevjzstJ1QlrAyAY/edit'
-    const INSTANTLY_GID = '850839039' // Instantly Workspaces tab
+    const INSTANTLY_GID = '928115249' // Instantly Workspaces tab
     const spreadsheetId = SHEET_URL.match(/\/d\/([a-zA-Z0-9-_]+)/)?.[1]
 
     if (!spreadsheetId) {
@@ -39,14 +89,25 @@ async function getInstantlyApiKey(clientName: string): Promise<string | null> {
 
     const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv&gid=${INSTANTLY_GID}`
 
+    console.log(`Fetching Instantly API keys from: ${csvUrl}`)
+
     const response = await fetch(csvUrl, {
       method: 'GET',
       headers: { 'Accept': 'text/csv' },
       cache: 'no-store',
+      redirect: 'follow', // Explicitly follow redirects from Google Sheets
     })
 
+    console.log(`Response status: ${response.status} ${response.statusText}`)
+    console.log(`Response URL: ${response.url}`)
+    console.log(`Response redirected: ${response.redirected}`)
+
     if (!response.ok) {
-      throw new Error(`Failed to fetch sheet: ${response.statusText}`)
+      const errorText = await response.text()
+      console.error(`Failed to fetch sheet. Status: ${response.status}, Error: ${errorText.substring(0, 500)}`)
+      console.error(`Request URL: ${csvUrl}`)
+      console.error(`Final URL: ${response.url}`)
+      throw new Error(`Failed to fetch sheet: ${response.statusText} (${response.status})`)
     }
 
     const csvText = await response.text()
@@ -57,11 +118,13 @@ async function getInstantlyApiKey(clientName: string): Promise<string | null> {
     }
 
     // Parse CSV to find matching client
+    const allClients: string[] = []
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i]
       if (!line.trim()) continue
 
-      // Simple CSV parsing - Column A: client_name, Column B: api_key
+      // Simple CSV parsing
+      // Column A: workspace_id, Column B: api_key, Column C: workspace_name, Column D: client_name
       const values: string[] = []
       let currentValue = ''
       let inQuotes = false
@@ -79,8 +142,8 @@ async function getInstantlyApiKey(clientName: string): Promise<string | null> {
       }
       values.push(currentValue.trim())
 
-      const rowClientName = values[0] || ''
-      const apiKey = values[1] || ''
+      const apiKey = values[1] || ''        // Column B: api_key
+      const rowClientName = values[3] || '' // Column D: client_name
 
       // Skip header rows
       if (rowClientName.toLowerCase().includes('client') ||
@@ -88,17 +151,31 @@ async function getInstantlyApiKey(clientName: string): Promise<string | null> {
         continue
       }
 
+      // Track all clients for debugging
+      if (rowClientName) {
+        allClients.push(rowClientName)
+      }
+
       // Match client name (case-insensitive, exact match)
       if (rowClientName.toLowerCase() === clientName.toLowerCase()) {
+        console.log(`✓ Found API key for '${clientName}' (key: ${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)})`)
+
+        // Cache the API key
+        apiKeyCache.set(clientName.toLowerCase(), {
+          key: apiKey,
+          timestamp: Date.now()
+        })
+
         return apiKey
       }
     }
 
+    console.error(`Client '${clientName}' not found. Available clients in Instantly sheet:`, allClients)
     throw new Error(`Client '${clientName}' not found in Instantly sheet`)
 
   } catch (error) {
-    console.error('Error fetching Instantly API key:', error)
-    return null
+    console.error('Error in fetchApiKeyFromSheet:', error)
+    throw error
   }
 }
 
@@ -177,6 +254,8 @@ export async function listInstantlyCampaigns(options: {
       throw new Error(`No API key found for client '${clientName}'`)
     }
 
+    console.log(`Using API key: ${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`)
+
     // Fetch campaigns with pagination
     const allCampaigns: any[] = []
     let startingAfter: string | undefined = undefined
@@ -190,16 +269,22 @@ export async function listInstantlyCampaigns(options: {
       if (status) params.status = status
 
       try {
-        const response = await makeInstantlyRequest<{ campaigns: any[]; next_starting_after?: string }>(
+        const response = await makeInstantlyRequest<{ items?: any[]; campaigns?: any[]; next_starting_after?: string }>(
           '/campaigns',
           apiKey,
           params
         )
 
-        const campaigns = response.campaigns || []
+        // Instantly API returns campaigns in 'items' array
+        const campaigns = response.items || response.campaigns || []
         console.log(`Page ${page} returned ${campaigns.length} campaigns`)
 
+        if (campaigns.length > 0) {
+          console.log(`Sample campaign: ${campaigns[0].name} (ID: ${campaigns[0].id}, Status: ${campaigns[0].status})`)
+        }
+
         if (campaigns.length === 0) {
+          console.log('No campaigns found. Full response:', JSON.stringify(response, null, 2))
           break
         }
 
@@ -212,7 +297,10 @@ export async function listInstantlyCampaigns(options: {
 
         startingAfter = response.next_starting_after
       } catch (error) {
-        console.warn(`Error fetching campaigns page ${page}:`, error)
+        console.error(`Error fetching campaigns page ${page}:`, error)
+        if (error instanceof Error) {
+          console.error('Error details:', error.message)
+        }
         break
       }
     }
@@ -285,16 +373,39 @@ export async function getInstantlyCampaignDetails(options: {
       apiKey
     )
 
-    // Extract sequences
-    const sequences = (campaign.sequences || []).map((seq: any, index: number) => ({
-      step: index + 1,
-      subject: seq.subject || '',
-      body: seq.body || '',
-      delay_hours: seq.delay_in_hours || 0,
-      variants: seq.variants || []
-    }))
+    // Extract sequences from Instantly API structure
+    // Instantly returns: { sequences: [{ steps: [{ variants: [{ subject, body }] }] }] }
+    console.log(`Campaign structure:`, {
+      has_sequences: !!campaign.sequences,
+      sequences_length: campaign.sequences?.length,
+      first_sequence_has_steps: !!campaign.sequences?.[0]?.steps,
+      steps_count: campaign.sequences?.[0]?.steps?.length
+    })
+
+    const rawSequences = campaign.sequences?.[0]?.steps || []
+
+    const sequences = rawSequences.map((step: any, index: number) => {
+      // Get the first variant for the main subject/body, or use empty strings
+      const firstVariant = step.variants?.[0] || {}
+
+      return {
+        step: index + 1,
+        subject: firstVariant.subject || step.subject || '',
+        body: firstVariant.body || step.body || '',
+        delay_hours: step.delay || 0,
+        variants: step.variants || []
+      }
+    })
 
     console.log(`✓ Loaded campaign with ${sequences.length} sequences`)
+    if (sequences.length > 0) {
+      console.log(`First sequence sample:`, {
+        step: sequences[0].step,
+        has_subject: !!sequences[0].subject,
+        has_body: !!sequences[0].body,
+        subject_preview: sequences[0].subject?.substring(0, 50)
+      })
+    }
 
     return {
       success: true,

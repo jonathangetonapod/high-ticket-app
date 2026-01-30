@@ -98,6 +98,7 @@ async function fetchSheetData(sheetUrl: string, gid?: string): Promise<Record<st
         'Accept': 'text/csv',
       },
       cache: 'no-store', // Always fetch fresh data
+      redirect: 'follow', // Explicitly follow Google Sheets redirects
     })
 
     if (!response.ok) {
