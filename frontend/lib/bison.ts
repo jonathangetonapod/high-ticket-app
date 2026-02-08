@@ -205,7 +205,7 @@ async function fetchSenderEmailAccounts(apiKey: string): Promise<BisonSenderAcco
         const response = await makeBisonRequest<{ data: BisonSenderAccount[] }>(
           '/sender-emails',
           apiKey,
-          { page: String(page) }
+          { params: { page: String(page) } }
         )
 
         const pageData = response.data || []
@@ -484,9 +484,11 @@ export async function listBisonSenderEmails(options: {
           '/warmup/sender-emails',
           apiKey,
           {
-            start_date: start,
-            end_date: end,
-            page: String(page),
+            params: {
+              start_date: start,
+              end_date: end,
+              page: String(page),
+            }
           }
         )
 
@@ -560,7 +562,7 @@ export async function listBisonSenderEmails(options: {
       const bounceRate = emailsSent > 0 ? (bouncesCaused / emailsSent) * 100 : 0
 
       const hasMinimumWarmup = emailsSent >= 140 // 14+ days
-      const isDisabled = account.warmup_disabled_for_bouncing_count > 0
+      const isDisabled = (account.warmup_disabled_for_bouncing_count || 0) > 0
 
       // CRITICAL: Disabled or severe issues
       if (isDisabled || score < 30 || bounceRate > 5) {
