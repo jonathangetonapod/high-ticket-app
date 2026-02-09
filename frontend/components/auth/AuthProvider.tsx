@@ -148,26 +148,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await fetchUser()
   }
 
-  // Permission checks
-  const hasPermission = (permission: string): boolean => {
-    if (!user || !user.profile?.is_active) return false
-    if (user.profile.role === 'admin') return true
-    return user.permissions.includes(permission)
+  // Permission checks - return true for everything since auth is disabled
+  const hasPermission = (_permission: string): boolean => {
+    return true // Auth disabled - allow all
   }
 
-  const hasAnyPermission = (permissions: string[]): boolean => {
-    return permissions.some(p => hasPermission(p))
+  const hasAnyPermission = (_permissions: string[]): boolean => {
+    return true // Auth disabled - allow all
   }
 
-  const hasAllPermissions = (permissions: string[]): boolean => {
-    return permissions.every(p => hasPermission(p))
+  const hasAllPermissions = (_permissions: string[]): boolean => {
+    return true // Auth disabled - allow all
   }
 
-  const isRole = (role: UserRole): boolean => {
-    return user?.profile?.role === role
+  const isRole = (_role: UserRole): boolean => {
+    return true // Auth disabled - allow all
   }
 
-  const isAdmin = user?.profile?.role === 'admin'
+  const isAdmin = true // Auth disabled - treat everyone as admin
 
   return (
     <AuthContext.Provider
