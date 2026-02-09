@@ -34,13 +34,15 @@ export default function LoginPage() {
     try {
       console.log('Calling signIn...')
       await signIn(email, password)
-      console.log('signIn succeeded, redirecting...')
-      router.push('/')
-      router.refresh()
+      console.log('signIn succeeded!')
+      // AuthProvider will handle redirect once user state updates
+      // Force a small delay then redirect
+      setTimeout(() => {
+        window.location.href = '/'
+      }, 100)
     } catch (err) {
       console.error('Login error:', err)
       setError(err instanceof Error ? err.message : 'Login failed')
-    } finally {
       setLoading(false)
     }
   }
