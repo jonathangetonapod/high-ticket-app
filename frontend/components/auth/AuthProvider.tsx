@@ -155,31 +155,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, pathname, router])
 
-  // Sign in
+  // Sign in - calls API to set JWT session cookie
   const signIn = async (email: string, password: string) => {
-    if (!supabase) {
-      console.error('Supabase not initialized yet')
-      throw new Error('Please wait, loading...')
-    }
     setError(null)
     console.log('Attempting sign in for:', email)
     
-    console.log('Calling supabase.auth.signInWithPassword...')
-    const { data, error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
+    // Call login API which handles both Supabase auth AND sets JWT session cookie
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
     })
-    console.log('signInWithPassword result:', { data: !!data, error: signInError?.message })
-
-    if (signInError) {
-      console.error('Sign in error:', signInError.message)
-      setError(signInError.message)
-      throw signInError
+    
+    const data = await response.json()
+    console.log('Login API response:', { success: data.success, error: data.error })
+    
+    if (!response.ok || !data.success) {
+      const errorMessage = data.error || 'Login failed'
+      setError(errorMessage)
+      throw new Error(errorMessage)
     }
 
     console.log('Sign in successful!')
-    // Don't wait for fetchUser - the auth state change listener will handle it
-    // Just return success so the login page can redirect
   }
 
   // Sign out
