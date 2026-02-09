@@ -99,44 +99,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase])
 
-  // Initial load - only run once mounted
+  // Initial load - disabled for now due to Supabase session issues
   useEffect(() => {
-    if (!mounted) return
-    
-    const initAuth = async () => {
-      setLoading(true)
-      try {
-        await fetchUser()
-      } catch (err) {
-        console.error('Init auth error:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    initAuth()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted])
+    // Just set loading to false immediately - auth is disabled
+    setLoading(false)
+  }, [])
 
-  // Listen for auth changes
-  useEffect(() => {
-    if (!mounted) return
-    
-    const sb = createClient()
-    const { data: { subscription } } = sb.auth.onAuthStateChange(
-      async (event: string, _session: unknown) => {
-        if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          await fetchUser()
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null)
-        }
-      }
-    )
-
-    return () => {
-      subscription.unsubscribe()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted])
+  // Auth state listener - disabled for now
+  // useEffect(() => { ... }, [mounted])
 
   // Redirect logic
   useEffect(() => {
