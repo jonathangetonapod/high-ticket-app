@@ -51,11 +51,12 @@ async function loadSlackChannels(): Promise<SlackChannel[]> {
   console.log('📱 Loading Slack channels...')
   const result = await callBridgeKit('bridgekit.list_slack_channels')
   if (result?.channels?.channels) {
-    slackChannelsCache = result.channels.channels.filter(
+    const channels = result.channels.channels.filter(
       (c: SlackChannel) => c.name.startsWith('client-')
     )
-    console.log(`  ✓ Found ${slackChannelsCache.length} client channels`)
-    return slackChannelsCache
+    slackChannelsCache = channels
+    console.log(`  ✓ Found ${channels.length} client channels`)
+    return channels
   }
   return []
 }
