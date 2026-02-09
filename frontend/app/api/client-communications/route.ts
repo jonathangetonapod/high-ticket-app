@@ -77,7 +77,7 @@ interface ClientCommunication {
 async function ensureTable() {
   try {
     // Try to create the table if it doesn't exist
-    const { error } = await getSupabase().rpc('exec_sql' as any, {
+    const { error } = await (getSupabase() as any).rpc('exec_sql', {
       sql: `
         CREATE TABLE IF NOT EXISTS client_communications (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -110,7 +110,7 @@ async function ensureTable() {
   } catch {
     // RPC might not exist, check if table exists
     try {
-      await getSupabase().from('client_communications').select('id').limit(1)
+      await (getSupabase() as any).from('client_communications').select('id').limit(1)
     } catch (e) {
       console.error('Table check failed:', e)
     }
@@ -238,7 +238,7 @@ export async function GET(request: Request) {
     
     await ensureTable()
 
-    let query = supabase
+    let query = (getSupabase() as any)
       .from('client_communications')
       .select('*')
       .order('days_since_contact', { ascending: false })
@@ -271,7 +271,7 @@ export async function GET(request: Request) {
     }
 
     // Calculate stats and add health scores
-    const communications = (data || []).map(client => ({
+    const communications = (data || []).map((client: any) => ({
       ...client,
       health_score: calculateHealthScore(client)
     }))
@@ -279,15 +279,15 @@ export async function GET(request: Request) {
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
-    const noEmail7d = communications.filter(c => 
+    const noEmail7d = communications.filter((c: any) => 
       !c.last_email_date || new Date(c.last_email_date) < sevenDaysAgo
     ).length
 
-    const noSlack7d = communications.filter(c => 
+    const noSlack7d = communications.filter((c: any) => 
       !c.last_slack_date || new Date(c.last_slack_date) < sevenDaysAgo
     ).length
 
-    const noContact7d = communications.filter(c => {
+    const noContact7d = communications.filter((c: any) => {
       const lastEmail = c.last_email_date ? new Date(c.last_email_date) : null
       const lastSlack = c.last_slack_date ? new Date(c.last_slack_date) : null
       const lastContact = lastEmail && lastSlack 
@@ -297,21 +297,21 @@ export async function GET(request: Request) {
     }).length
 
     // Health distribution
-    const healthyCount = communications.filter(c => c.health_score.bracket === 'healthy').length
-    const needsAttentionCount = communications.filter(c => c.health_score.bracket === 'needs_attention').length
-    const atRiskCount = communications.filter(c => c.health_score.bracket === 'at_risk').length
+    const healthyCount = communications.filter((c: any) => c.health_score.bracket === 'healthy').length
+    const needsAttentionCount = communications.filter((c: any) => c.health_score.bracket === 'needs_attention').length
+    const atRiskCount = communications.filter((c: any) => c.health_score.bracket === 'at_risk').length
     const avgHealthScore = communications.length > 0
-      ? Math.round(communications.reduce((sum, c) => sum + c.health_score.total, 0) / communications.length)
+      ? Math.round(communications.reduce((sum: number, c: any) => sum + c.health_score.total, 0) / communications.length)
       : 0
-    const totalUnreplied = communications.reduce((sum, c) => sum + (c.unreplied_count || 0), 0)
+    const totalUnreplied = communications.reduce((sum: number, c: any) => sum + (c.unreplied_count || 0), 0)
 
     const stats = {
       totalClients: communications.length,
-      activeClients: communications.filter(c => c.status === 'active').length,
-      needsAttention: communications.filter(c => c.days_since_contact >= 7).length,
-      critical: communications.filter(c => c.days_since_contact >= 14).length,
+      activeClients: communications.filter((c: any) => c.status === 'active').length,
+      needsAttention: communications.filter((c: any) => c.days_since_contact >= 7).length,
+      critical: communications.filter((c: any) => c.days_since_contact >= 14).length,
       avgDaysSinceContact: communications.length > 0
-        ? Math.round(communications.reduce((sum, c) => sum + c.days_since_contact, 0) / communications.length)
+        ? Math.round(communications.reduce((sum: number, c: any) => sum + c.days_since_contact, 0) / communications.length)
         : 0,
       noEmail7d,
       noSlack7d,
@@ -523,7 +523,7 @@ export async function POST_DISABLED(request: Request) {
       }
 
       // Upsert immediately after processing each client (crash-resilient)
-      const { error: upsertError } = await supabase
+      const { error: upsertError } = await (getSupabase() as any)
         .from('client_communications')
         .upsert(commRecord, { onConflict: 'client_name' })
       
@@ -575,7 +575,7 @@ export async function POST_DISABLED(request: Request) {
         }
 
         try {
-          await getSupabase().from('daily_insights').insert({
+          await (getSupabase() as any).from('daily_insights').insert({
             date: new Date().toISOString().split('T')[0],
             insight_type: 'client_communication',
             client_name: insight.client_name,

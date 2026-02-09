@@ -41,7 +41,7 @@ export async function GET(
     const { id } = await params
     const supabase = createServerClient()
     
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('best_practices')
       .select('*')
       .eq('id', id)
@@ -159,7 +159,7 @@ export async function DELETE(
     const supabase = createServerClient()
 
     // First check if guide exists
-    const { data: existing } = await supabase
+    const { data: existing } = await (supabase as any)
       .from('best_practices')
       .select('id')
       .eq('id', id)
@@ -172,7 +172,7 @@ export async function DELETE(
       )
     }
 
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('best_practices')
       .delete()
       .eq('id', id)

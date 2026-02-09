@@ -6,7 +6,7 @@ const getSupabase = () => createServerClient()
 // Ensure table exists (best effort - table should be created via migration)
 async function ensureTable() {
   try {
-    await getSupabase().rpc('exec_sql' as any, {
+    await (getSupabase() as any).rpc('exec_sql', {
       sql: `
         CREATE TABLE IF NOT EXISTS daily_insights (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -27,7 +27,7 @@ async function ensureTable() {
   } catch {
     // RPC might not exist, that's ok - table should exist via migration
     try {
-      await getSupabase().from('daily_insights').select('id').limit(1)
+      await (getSupabase() as any).from('daily_insights').select('id').limit(1)
     } catch {
       // Table doesn't exist yet, will be created on first insert
     }
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
   const days = parseInt(url.searchParams.get('days') || '7')
 
   try {
-    let query = supabase
+    let query = (getSupabase() as any)
       .from('daily_insights')
       .select('*')
       .order('created_at', { ascending: false })
@@ -107,7 +107,7 @@ export async function POST(request: Request) {
       priority: body.priority || 'normal'
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await (getSupabase() as any)
       .from('daily_insights')
       .insert(insight)
       .select()
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
       if (error.code === '42P01') {
         await ensureTable()
         // Retry insert
-        const { data: retryData, error: retryError } = await supabase
+        const { data: retryData, error: retryError } = await (getSupabase() as any)
           .from('daily_insights')
           .insert(insight)
           .select()
