@@ -1,16 +1,14 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import { getAllClients } from '@/lib/sheets'
 import { listSlackChannels, getSlackChannelHistory } from '@/lib/slack'
+import { createServerClient } from '@/lib/supabase/server'
 
 const execAsync = promisify(exec)
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+// Lazy-load supabase to avoid build-time errors
+const getSupabase = () => createServerClient()
 
 interface Email {
   id: string
@@ -79,7 +77,7 @@ interface ClientCommunication {
 async function ensureTable() {
   try {
     // Try to create the table if it doesn't exist
-    const { error } = await supabase.rpc('exec_sql', {
+    const { error } = await getSupabase().rpc('exec_sql', {
       sql: `
         CREATE TABLE IF NOT EXISTS client_communications (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -112,7 +110,7 @@ async function ensureTable() {
   } catch {
     // RPC might not exist, check if table exists
     try {
-      await supabase.from('client_communications').select('id').limit(1)
+      await getSupabase().from('client_communications').select('id').limit(1)
     } catch (e) {
       console.error('Table check failed:', e)
     }
@@ -577,7 +575,7 @@ export async function POST_DISABLED(request: Request) {
         }
 
         try {
-          await supabase.from('daily_insights').insert({
+          await getSupabase().from('daily_insights').insert({
             date: new Date().toISOString().split('T')[0],
             insight_type: 'client_communication',
             client_name: insight.client_name,

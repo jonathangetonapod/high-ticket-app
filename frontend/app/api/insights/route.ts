@@ -1,15 +1,12 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@/lib/supabase/server'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+const getSupabase = () => createServerClient()
 
 // Ensure table exists (best effort - table should be created via migration)
 async function ensureTable() {
   try {
-    await supabase.rpc('exec_sql', {
+    await getSupabase().rpc('exec_sql', {
       sql: `
         CREATE TABLE IF NOT EXISTS daily_insights (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -30,7 +27,7 @@ async function ensureTable() {
   } catch {
     // RPC might not exist, that's ok - table should exist via migration
     try {
-      await supabase.from('daily_insights').select('id').limit(1)
+      await getSupabase().from('daily_insights').select('id').limit(1)
     } catch {
       // Table doesn't exist yet, will be created on first insert
     }
