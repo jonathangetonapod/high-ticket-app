@@ -14,7 +14,8 @@ import {
   Building2,
   Briefcase,
   Globe,
-  Loader2
+  Loader2,
+  Target
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -32,6 +33,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger
 } from '@/components/ui/collapsible'
+import { ICPMatchAnalysis, type LeadAnalysis, type ICPMatchSummary } from './LeadMatchCard'
 
 // Types for processed lead insights
 export interface FieldCoverage {
@@ -76,6 +78,13 @@ interface LeadInsightsProps {
   insights: ProcessedLeadInsights | null
   isLoading: boolean
   error: string | null
+  // Optional ICP match analysis data
+  icpMatchData?: {
+    leads: LeadAnalysis[]
+    summary: ICPMatchSummary
+    isLoading: boolean
+    error: string | null
+  }
 }
 
 // Helper: Calculate average field coverage
@@ -300,7 +309,7 @@ function IssueAlertCard({
 }
 
 // Main Component
-export function LeadInsights({ insights, isLoading, error }: LeadInsightsProps) {
+export function LeadInsights({ insights, isLoading, error, icpMatchData }: LeadInsightsProps) {
   if (isLoading) {
     return (
       <Card className="shadow-medium">
@@ -650,6 +659,33 @@ export function LeadInsights({ insights, isLoading, error }: LeadInsightsProps) 
                 Showing 10 of {sampleData.length} sample rows
               </p>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ICP Match Analysis Section */}
+      {icpMatchData && (
+        <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50/30 to-purple-50/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Target size={18} className="text-indigo-600" />
+              ICP Match Analysis
+            </CardTitle>
+            <CardDescription>
+              How well each lead matches your Ideal Customer Profile. Mismatches are shown first to help you identify problem leads before launch.
+              {icpMatchData.summary && (
+                <span className="block mt-1 font-medium">
+                  {icpMatchData.summary.strong} strong matches, {icpMatchData.summary.partial} partial, {icpMatchData.summary.weak} weak, {icpMatchData.summary.mismatch} mismatches
+                </span>
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ICPMatchAnalysis
+              leads={icpMatchData.leads}
+              isLoading={icpMatchData.isLoading}
+              error={icpMatchData.error}
+            />
           </CardContent>
         </Card>
       )}

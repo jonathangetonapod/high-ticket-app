@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import Link from 'next/link'
 import {
   FileText,
   Loader2,
@@ -11,7 +12,9 @@ import {
   Target,
   X,
   ChevronDown,
-  Plus
+  Plus,
+  AlertTriangle,
+  ExternalLink
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,6 +22,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 import { Client, Campaign, CampaignDetails, ValidationResult, getStatusBadge } from './types'
 
 interface ClientCampaignSelectorProps {
@@ -49,6 +53,15 @@ interface ClientCampaignSelectorProps {
   getValidationCard: (validation: ValidationResult) => React.ReactNode
 }
 
+interface ClientContext {
+  clientId: string
+  clientName: string
+  icpSummary: string
+  specialRequirements: string
+  transcriptNotes: string
+  updatedAt: string
+}
+
 export function ClientCampaignSelector({
   clients,
   campaigns,
@@ -72,6 +85,48 @@ export function ClientCampaignSelector({
   const [loadingGmailSearch, setLoadingGmailSearch] = useState(false)
   const [campaignDropdownOpen, setCampaignDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  
+  // Client context state
+  const [clientContext, setClientContext] = useState<ClientContext | null>(null)
+  const [loadingContext, setLoadingContext] = useState(false)
+  const [contextHasContent, setContextHasContent] = useState(false)
+
+  // Fetch client context when client changes
+  useEffect(() => {
+    if (formData.clientId) {
+      loadClientContext(formData.clientId)
+    } else {
+      setClientContext(null)
+      setContextHasContent(false)
+    }
+  }, [formData.clientId])
+
+  const loadClientContext = async (clientId: string) => {
+    setLoadingContext(true)
+    try {
+      const response = await fetch(`/api/clients/${encodeURIComponent(clientId)}/context`)
+      const data = await response.json()
+      if (data.success && data.context) {
+        setClientContext(data.context)
+        // Check if context has meaningful content
+        const hasContent = !!(
+          data.context.icpSummary?.trim() || 
+          data.context.specialRequirements?.trim() || 
+          data.context.transcriptNotes?.trim()
+        )
+        setContextHasContent(hasContent)
+      } else {
+        setClientContext(null)
+        setContextHasContent(false)
+      }
+    } catch (error) {
+      console.error('Error loading client context:', error)
+      setClientContext(null)
+      setContextHasContent(false)
+    } finally {
+      setLoadingContext(false)
+    }
+  }
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -215,6 +270,48 @@ export function ClientCampaignSelector({
               </p>
             )}
           </div>
+
+          {/* Client Context Indicator */}
+          {formData.clientId && (
+            <div className="flex items-center justify-between p-3 rounded-lg border bg-gray-50">
+              <div className="flex items-center gap-3">
+                {loadingContext ? (
+                  <>
+                    <Loader2 className="animate-spin text-gray-400" size={16} />
+                    <span className="text-sm text-gray-600">Checking client context...</span>
+                  </>
+                ) : contextHasContent ? (
+                  <>
+                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1">
+                      <CheckCircle size={12} />
+                      Context loaded
+                    </Badge>
+                    <span className="text-sm text-gray-600">
+                      ICP and requirements available for AI validation
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1">
+                      <AlertTriangle size={12} />
+                      No client context
+                    </Badge>
+                    <span className="text-sm text-gray-600">
+                      Add ICP and requirements for better validation
+                    </span>
+                  </>
+                )}
+              </div>
+              <Link 
+                href={`/clients/${encodeURIComponent(formData.clientId)}/context`}
+                target="_blank"
+                className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 hover:underline"
+              >
+                {contextHasContent ? 'View' : 'Add'} Context
+                <ExternalLink size={12} />
+              </Link>
+            </div>
+          )}
 
           {/* Multi-Campaign Selection - Shown after client is selected */}
           {formData.clientId && (
@@ -467,27 +564,33 @@ export function ClientCampaignSelector({
 
           {/* Additional fields */}
           <div className="space-y-2">
-            <Label htmlFor="fathomMeetingId">Fathom Meeting ID (Optional)</Label>
+            <Label htmlFor="fathomMeetingId" className="flex items-center gap-1">
+              Fathom Meeting ID <span className="text-red-500">*</span>
+            </Label>
             <Input
               id="fathomMeetingId"
               value={formData.fathomMeetingId}
               onChange={(e) => onFormDataChange({ fathomMeetingId: e.target.value })}
               placeholder="e.g., abc-123-xyz"
+              className={!formData.fathomMeetingId?.trim() ? 'border-amber-300 focus:border-amber-500' : ''}
             />
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Info size={12} />
-              If you have a Fathom recording link, add it here
+              Paste the Fathom meeting ID or link
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="strategyTranscript">Strategy Call Transcript (Optional)</Label>
+            <Label htmlFor="strategyTranscript" className="flex items-center gap-1">
+              Strategy Call Transcript <span className="text-red-500">*</span>
+            </Label>
             <Textarea
               id="strategyTranscript"
               value={formData.strategyTranscript}
               onChange={(e) => onFormDataChange({ strategyTranscript: e.target.value })}
               placeholder="Paste the full strategy call transcript here..."
               rows={6}
+              className={!formData.strategyTranscript?.trim() ? 'border-amber-300 focus:border-amber-500' : ''}
             />
             <p className="text-xs text-muted-foreground flex items-center gap-1">
               <Info size={12} />
@@ -496,13 +599,16 @@ export function ClientCampaignSelector({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="intakeFormUrl">Intake Form URL (Optional)</Label>
+            <Label htmlFor="intakeFormUrl" className="flex items-center gap-1">
+              Intake Form URL <span className="text-red-500">*</span>
+            </Label>
             <Input
               id="intakeFormUrl"
               type="url"
               value={formData.intakeFormUrl}
               onChange={(e) => onFormDataChange({ intakeFormUrl: e.target.value })}
               placeholder="https://docs.google.com/..."
+              className={!formData.intakeFormUrl?.trim() ? 'border-amber-300 focus:border-amber-500' : ''}
             />
             <p className="text-xs text-muted-foreground">
               Google Doc or form link with additional client details

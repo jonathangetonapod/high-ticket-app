@@ -1,0 +1,8 @@
+{
+  "clientId": "test-client",
+  "clientName": "TechFlow Solutions",
+  "icpSummary": "# Ideal Customer Profile\n\n**Target:** VP of Engineering, CTO, or Head of Platform at B2B SaaS companies\n\n**Company Size:** 50-500 employees\n\n**Industry:** Software, FinTech, HealthTech\n\n**Pain Points:**\n- Scaling engineering teams\n- Technical debt slowing development\n- Need for better developer tooling\n\n**Budget Authority:** $50k-200k annual spend",
+  "specialRequirements": "# Special Requirements\n\n- Only target US and Canada based companies\n- Avoid competitors: GitLab, CircleCI, TravisCI\n- No startups under 2 years old\n- Prefer companies that have raised Series A+\n- Avoid overly salesy language - technical audience prefers substance",
+  "transcriptNotes": "# From Onboarding Call (Feb 2026)\n\n- Client emphasized they want to sound 'developer-friendly'\n- Previous campaigns that were too 'marketing-speak' flopped\n- They had success with case study mentions\n- Ideal meeting length: 20 minutes, not 30",
+  "updatedAt": "2026-02-08T00:00:00Z"
+}

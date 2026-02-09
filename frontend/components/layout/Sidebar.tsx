@@ -11,7 +11,10 @@ import {
   CheckSquare,
   Settings,
   Zap,
-  FileText
+  FileText,
+  BookOpen,
+  HelpCircle,
+  MessageSquare
 } from 'lucide-react'
 
 const navigation = [
@@ -21,11 +24,14 @@ const navigation = [
   { name: 'Campaigns', href: '/campaigns', icon: Mail },
   { name: 'Mailbox Health', href: '/mailbox-health', icon: Activity },
   { name: 'Submissions', href: '/submissions', icon: CheckSquare },
+  { name: 'Communications', href: '/communications', icon: MessageSquare },
+  { name: 'Help & FAQ', href: '/help', icon: HelpCircle },
 ]
 
 const adminNavigation = [
   { name: 'User Management', href: '/admin/users', icon: Users },
   { name: 'Requirements', href: '/admin/requirements', icon: FileText },
+  { name: 'Best Practices', href: '/admin/best-practices', icon: BookOpen },
 ]
 
 export function Sidebar() {

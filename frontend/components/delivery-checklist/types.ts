@@ -2,6 +2,31 @@
 
 export type ValidationStatus = 'idle' | 'validating' | 'pass' | 'fail' | 'warning'
 
+// Inline AI Suggestion types
+export interface InlineSuggestionLocation {
+  emailIndex: number
+  field: 'subject' | 'body'
+  campaignId?: string
+}
+
+export interface InlineSuggestionItem {
+  id: string
+  type: 'subject' | 'body' | 'personalization' | 'tone' | 'length' | 'spam'
+  severity: 'error' | 'warning' | 'suggestion'
+  message: string
+  original: string
+  suggested: string
+  location: InlineSuggestionLocation
+  applied?: boolean
+  dismissed?: boolean
+}
+
+export interface InlineSuggestionsState {
+  [campaignId: string]: {
+    [emailIndex: number]: InlineSuggestionItem[]
+  }
+}
+
 export interface ValidationResult {
   status: ValidationStatus
   message: string

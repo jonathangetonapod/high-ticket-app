@@ -1,0 +1,8 @@
+{
+  "clientId": "example-client",
+  "clientName": "Example Corp",
+  "icpSummary": "# ICP Summary\n\nTarget: VP of Sales at B2B SaaS companies, 50-500 employees...",
+  "specialRequirements": "# Special Requirements\n\n- Only target US-based companies\n- Avoid competitors: Acme, BigCorp...",
+  "transcriptNotes": "# From Onboarding Call\n\n- Client mentioned they want to focus on healthcare vertical\n- Budget: $5k/month...",
+  "updatedAt": "2026-02-08T00:00:00Z"
+}
