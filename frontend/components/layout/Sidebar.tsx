@@ -57,29 +57,11 @@ export function Sidebar() {
     return null
   }
 
-  // Show loading skeleton while checking auth
-  if (loading) {
-    return (
-      <aside className="fixed inset-y-0 left-0 z-50 w-64 bg-gray-900 text-white">
-        <div className="flex h-16 items-center gap-3 px-6 border-b border-gray-800">
-          <div className="w-8 h-8 rounded-lg bg-gray-700 animate-pulse" />
-          <div className="space-y-1">
-            <div className="h-4 w-20 bg-gray-700 rounded animate-pulse" />
-            <div className="h-3 w-16 bg-gray-800 rounded animate-pulse" />
-          </div>
-        </div>
-        <nav className="px-3 py-4 space-y-1">
-          {[1, 2, 3, 4, 5].map(i => (
-            <div key={i} className="h-10 bg-gray-800 rounded-lg animate-pulse" />
-          ))}
-        </nav>
-      </aside>
-    )
-  }
+  // Don't block on loading - show sidebar immediately
 
   const renderNavItem = (item: NavItem) => {
-    // Check permission if specified
-    if (item.permission && !hasPermission(item.permission)) {
+    // Skip permission check if no user (auth disabled) - show all items
+    if (user && item.permission && !hasPermission(item.permission)) {
       return null
     }
 
@@ -106,12 +88,13 @@ export function Sidebar() {
     )
   }
 
+  // Show all items if no user (auth disabled), otherwise check permissions
   const visibleNavItems = navigation.filter(item => 
-    !item.permission || hasPermission(item.permission)
+    !user || !item.permission || hasPermission(item.permission)
   )
 
   const visibleAdminItems = adminNavigation.filter(item =>
-    !item.permission || hasPermission(item.permission)
+    !user || !item.permission || hasPermission(item.permission)
   )
 
   return (
