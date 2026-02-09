@@ -108,30 +108,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Auth state listener - disabled for now
   // useEffect(() => { ... }, [mounted])
 
-  // Redirect logic
-  useEffect(() => {
-    if (loading) return
-
-    const isPublicRoute = PUBLIC_ROUTES.some(route => pathname.startsWith(route))
-
-    // If not logged in and on protected route, redirect to login
-    if (!user && !isPublicRoute) {
-      router.push('/login')
-      return
-    }
-
-    // If logged in and on login page, redirect to home
-    if (user && pathname === '/login') {
-      router.push('/')
-      return
-    }
-
-    // If user is disabled, sign out
-    if (user?.profile && !user.profile.is_active) {
-      setError('Your account has been disabled. Please contact an administrator.')
-      signOut()
-    }
-  }, [user, loading, pathname, router])
+  // Redirect logic - disabled for now
+  // useEffect(() => { ... }, [user, loading, pathname, router])
 
   // Sign in - calls API to set JWT session cookie
   const signIn = async (email: string, password: string) => {
