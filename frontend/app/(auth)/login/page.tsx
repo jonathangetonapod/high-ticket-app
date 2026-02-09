@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,14 +12,18 @@ import { useAuth } from '@/components/auth/AuthProvider'
 
 export default function LoginPage() {
   const router = useRouter()
-  const { signIn, loading: authLoading } = useAuth()
+  const { signIn, user } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   
-  // If auth is still initializing, don't allow submit yet
-  const isReady = !authLoading
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      router.push('/')
+    }
+  }, [user, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -103,16 +107,11 @@ export default function LoginPage() {
               </div>
             )}
 
-            <Button type="submit" className="w-full h-11 text-base" disabled={loading || !isReady}>
+            <Button type="submit" className="w-full h-11 text-base" disabled={loading}>
               {loading ? (
                 <>
                   <Loader2 className="animate-spin mr-2" size={18} />
                   Signing in...
-                </>
-              ) : !isReady ? (
-                <>
-                  <Loader2 className="animate-spin mr-2" size={18} />
-                  Loading...
                 </>
               ) : (
                 'Sign In'
