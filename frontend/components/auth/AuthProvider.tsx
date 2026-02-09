@@ -59,23 +59,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) return
     
     try {
+      console.log('fetchUser: getting session...')
       const { data: { session } } = await supabase.auth.getSession()
+      console.log('fetchUser: session result:', !!session)
       
       if (!session?.user) {
+        console.log('fetchUser: no session, setting user to null')
         setUser(null)
         return
       }
 
+      console.log('fetchUser: fetching profile for', session.user.id)
       // Fetch profile
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
         .select('*')
         .eq('id', session.user.id)
         .single()
+      console.log('fetchUser: profile result:', { profile: !!profile, error: profileError?.message })
 
+      console.log('fetchUser: fetching permissions...')
       // Fetch permissions via RPC
-      const { data: permissionsData } = await supabase
+      const { data: permissionsData, error: permsError } = await supabase
         .rpc('get_user_permissions', { user_id: session.user.id })
+      console.log('fetchUser: permissions result:', { count: permissionsData?.length, error: permsError?.message })
 
       const permissions = permissionsData?.map((p: { permission_name: string }) => p.permission_name) || []
 
@@ -85,6 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profile,
         permissions,
       })
+      console.log('fetchUser: user set successfully')
     } catch (err) {
       console.error('Error fetching user:', err)
       setUser(null)
@@ -142,26 +150,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null)
     console.log('Attempting sign in for:', email)
     
-    const { error: signInError } = await supabase.auth.signInWithPassword({
+    console.log('Calling supabase.auth.signInWithPassword...')
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
+    console.log('signInWithPassword result:', { data: !!data, error: signInError?.message })
 
     if (signInError) {
+      console.error('Sign in error:', signInError.message)
       setError(signInError.message)
       throw signInError
     }
 
+    console.log('Sign in successful, fetching user data...')
     // Fetch user data
     await fetchUser()
-
-    // Update last login
-    if (user) {
-      await supabase
-        .from('user_profiles')
-        .update({ last_login_at: new Date().toISOString() })
-        .eq('id', user.id)
-    }
+    console.log('User data fetched')
   }
 
   // Sign out
