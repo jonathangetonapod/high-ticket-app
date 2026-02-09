@@ -12,22 +12,29 @@ import { useAuth } from '@/components/auth/AuthProvider'
 
 export default function LoginPage() {
   const router = useRouter()
-  const { signIn } = useAuth()
+  const { signIn, loading: authLoading } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  
+  // If auth is still initializing, don't allow submit yet
+  const isReady = !authLoading
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log('Login form submitted', { email })
     setLoading(true)
     setError('')
 
     try {
+      console.log('Calling signIn...')
       await signIn(email, password)
+      console.log('signIn succeeded, redirecting...')
       router.push('/')
       router.refresh()
     } catch (err) {
+      console.error('Login error:', err)
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
       setLoading(false)
@@ -96,11 +103,16 @@ export default function LoginPage() {
               </div>
             )}
 
-            <Button type="submit" className="w-full h-11 text-base" disabled={loading}>
+            <Button type="submit" className="w-full h-11 text-base" disabled={loading || !isReady}>
               {loading ? (
                 <>
                   <Loader2 className="animate-spin mr-2" size={18} />
                   Signing in...
+                </>
+              ) : !isReady ? (
+                <>
+                  <Loader2 className="animate-spin mr-2" size={18} />
+                  Loading...
                 </>
               ) : (
                 'Sign In'

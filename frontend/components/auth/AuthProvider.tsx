@@ -143,8 +143,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Sign in
   const signIn = async (email: string, password: string) => {
-    if (!supabase) throw new Error('Not initialized')
+    if (!supabase) {
+      console.error('Supabase not initialized yet')
+      throw new Error('Please wait, loading...')
+    }
     setError(null)
+    console.log('Attempting sign in for:', email)
     
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
