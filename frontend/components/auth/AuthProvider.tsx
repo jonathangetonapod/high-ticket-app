@@ -99,23 +99,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase])
 
-  // Initial load - only run once supabase is ready
+  // Initial load - only run once mounted
   useEffect(() => {
-    if (!supabase) return
+    if (!mounted) return
     
     const initAuth = async () => {
       setLoading(true)
-      await fetchUser()
-      setLoading(false)
+      try {
+        await fetchUser()
+      } catch (err) {
+        console.error('Init auth error:', err)
+      } finally {
+        setLoading(false)
+      }
     }
     initAuth()
-  }, [supabase, fetchUser])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted])
 
   // Listen for auth changes
   useEffect(() => {
-    if (!supabase) return
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    if (!mounted) return
+    
+    const sb = createClient()
+    const { data: { subscription } } = sb.auth.onAuthStateChange(
       async (event: string, _session: unknown) => {
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           await fetchUser()
@@ -128,7 +135,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.unsubscribe()
     }
-  }, [supabase, fetchUser])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted])
 
   // Redirect logic
   useEffect(() => {
