@@ -94,10 +94,8 @@ export async function POST(request: NextRequest) {
     // Sign the session JWT
     const sessionToken = await signSession(sessionUser)
 
-    // Set the session cookie
-    await setSessionCookie(sessionToken)
-
-    return NextResponse.json({
+    // Create response with user data
+    const response = NextResponse.json({
       success: true,
       user: {
         id: data.user.id,
@@ -110,6 +108,17 @@ export async function POST(request: NextRequest) {
         permissions: permissions?.map((p) => p.permission_name) || [],
       },
     })
+
+    // Set the session cookie on the response
+    response.cookies.set('session', sessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: '/',
+    })
+
+    return response
   } catch (error) {
     console.error('Login error:', error)
     return NextResponse.json(
