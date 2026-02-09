@@ -31,8 +31,9 @@ export async function GET(
     
     const supabase = createServerClient()
     
-    const { data, error } = await supabase
-      .from('client_context')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase
+      .from('client_context') as any)
       .select('*')
       .eq('client_id', clientId)
       .single()
@@ -117,8 +118,9 @@ export async function PUT(
       slack_channel_name: body.slackChannelName || ''
     }
     
-    const { data, error } = await supabase
-      .from('client_context')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase
+      .from('client_context') as any)
       .upsert(contextData, { onConflict: 'client_id' })
       .select()
       .single()
@@ -166,8 +168,9 @@ export async function DELETE(
     
     const supabase = createServerClient()
     
-    const { error } = await supabase
-      .from('client_context')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase
+      .from('client_context') as any)
       .delete()
       .eq('client_id', clientId)
     

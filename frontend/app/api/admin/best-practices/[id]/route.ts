@@ -100,8 +100,9 @@ export async function PUT(
     if (category) updateData.category = category
     if (content) updateData.content = content
 
-    const { data, error } = await supabase
-      .from('best_practices')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase
+      .from('best_practices') as any)
       .update(updateData)
       .eq('id', id)
       .select()

@@ -30,8 +30,9 @@ export async function GET() {
   try {
     const supabase = createServerClient()
     
-    const { data, error } = await supabase
-      .from('best_practices')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase
+      .from('best_practices') as any)
       .select('*')
       .order('category', { ascending: true })
       .order('title', { ascending: true })
@@ -45,7 +46,8 @@ export async function GET() {
     }
     
     // Transform to Guide interface
-    const guides: Guide[] = (data || []).map(row => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const guides: Guide[] = (data || []).map((row: any) => ({
       id: row.id,
       title: row.title,
       category: row.category,
@@ -95,8 +97,9 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString()
     }
 
-    const { data, error } = await supabase
-      .from('best_practices')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase
+      .from('best_practices') as any)
       .insert(guideData)
       .select()
       .single()

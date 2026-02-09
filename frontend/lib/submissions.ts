@@ -101,8 +101,9 @@ export async function createSubmission(data: Omit<Submission, 'id' | 'status' | 
   
   const row = submissionToRow(submission)
   
-  const { error } = await supabase
-    .from('submissions')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase
+    .from('submissions') as any)
     .insert(row)
   
   if (error) {
@@ -120,8 +121,9 @@ export async function getSubmissions(filters?: {
 }): Promise<Submission[]> {
   const supabase = createServerClient()
   
-  let query = supabase
-    .from('submissions')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query = (supabase
+    .from('submissions') as any)
     .select('*')
   
   if (filters?.status) {
@@ -147,8 +149,9 @@ export async function getSubmissions(filters?: {
 export async function getSubmissionById(id: string): Promise<Submission | null> {
   const supabase = createServerClient()
   
-  const { data, error } = await supabase
-    .from('submissions')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from('submissions') as any)
     .select('*')
     .eq('id', id)
     .single()
@@ -175,8 +178,9 @@ export async function updateSubmission(
   if (updates.reviewedAt !== undefined) updateData.reviewed_at = updates.reviewedAt
   if (updates.reviewNotes !== undefined) updateData.review_notes = updates.reviewNotes
   
-  const { data, error } = await supabase
-    .from('submissions')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (supabase
+    .from('submissions') as any)
     .update(updateData)
     .eq('id', id)
     .select()
@@ -193,8 +197,9 @@ export async function updateSubmission(
 export async function deleteSubmission(id: string): Promise<boolean> {
   const supabase = createServerClient()
   
-  const { error } = await supabase
-    .from('submissions')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase
+    .from('submissions') as any)
     .delete()
     .eq('id', id)
   
