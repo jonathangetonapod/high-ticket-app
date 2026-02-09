@@ -122,24 +122,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase, fetchUser])
 
-  // Redirect logic
+  // Redirect logic - only handle disabled users, let middleware handle auth redirects
   useEffect(() => {
-    if (loading) return
+    if (loading || !user) return
 
-    const isPublicRoute = PUBLIC_ROUTES.some(route => pathname.startsWith(route))
-
-    if (!user && !isPublicRoute) {
-      // Not logged in and trying to access protected route
-      router.push('/login')
-    } else if (user && pathname === '/login') {
-      // Logged in and on login page
-      router.push('/')
-    } else if (user && !user.profile?.is_active) {
+    if (user.profile && !user.profile.is_active) {
       // User is disabled
       setError('Your account has been disabled. Please contact an administrator.')
       signOut()
     }
-  }, [user, loading, pathname, router])
+  }, [user, loading])
 
   // Sign in
   const signIn = async (email: string, password: string) => {
