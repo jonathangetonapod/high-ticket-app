@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { createServerClient } from '@/lib/supabase/server'
 import { v4 as uuidv4 } from 'uuid'
+import { CreateBestPracticeSchema } from '@/lib/validations/best-practice'
+import { successResponse, errorResponse, validationErrorResponse } from '@/lib/api-response'
+import { requireAuth, requireAdmin, handleAuthError } from '@/lib/session'
 
 interface Guide {
   id: string
@@ -11,23 +13,12 @@ interface Guide {
   updatedAt: string
 }
 
-// Check if user is admin
-async function isAdmin(): Promise<boolean> {
-  try {
-    const cookieStore = await cookies()
-    const session = cookieStore.get('session')
-    if (!session?.value) return false
-    
-    const user = JSON.parse(Buffer.from(session.value, 'base64').toString())
-    return user.role === 'admin'
-  } catch {
-    return false
-  }
-}
-
-// GET - List all guides
+// GET - List all guides (requires auth)
 export async function GET() {
   try {
+    // Require authentication to view guides
+    await requireAuth()
+
     const supabase = createServerClient()
     
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -39,10 +30,7 @@ export async function GET() {
     
     if (error) {
       console.error('Error reading guides:', error)
-      return NextResponse.json(
-        { success: false, error: 'Failed to load guides' },
-        { status: 500 }
-      )
+      return errorResponse('Failed to load guides', 500)
     }
     
     // Transform to Guide interface
@@ -55,37 +43,33 @@ export async function GET() {
       updatedAt: row.updated_at
     }))
     
-    return NextResponse.json({
-      success: true,
-      guides
-    })
+    return successResponse({ guides })
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error reading guides:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to load guides' },
-      { status: 500 }
-    )
+    return errorResponse('Failed to load guides', 500)
   }
 }
 
 // POST - Create new guide (admin only)
 export async function POST(request: Request) {
-  if (!await isAdmin()) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
-    )
-  }
-
   try {
-    const { title, category, content } = await request.json()
+    // Require admin access for creating guides
+    await requireAdmin()
 
-    if (!title || !category || !content) {
-      return NextResponse.json(
-        { success: false, error: 'Title, category, and content are required' },
-        { status: 400 }
-      )
+    const body = await request.json()
+
+    // Validate with Zod
+    const result = CreateBestPracticeSchema.safeParse(body)
+    
+    if (!result.success) {
+      return validationErrorResponse(result.error)
     }
+
+    const { title, category, content } = result.data
 
     const supabase = createServerClient()
     
@@ -106,10 +90,7 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error('Error creating guide:', error)
-      return NextResponse.json(
-        { success: false, error: 'Failed to create guide' },
-        { status: 500 }
-      )
+      return errorResponse('Failed to create guide', 500)
     }
 
     const guide: Guide = {
@@ -120,13 +101,14 @@ export async function POST(request: Request) {
       updatedAt: data.updated_at
     }
 
-    return NextResponse.json({ success: true, guide })
+    return successResponse({ guide }, undefined, 201)
 
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error creating guide:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to create guide' },
-      { status: 500 }
-    )
+    return errorResponse('Failed to create guide', 500)
   }
 }

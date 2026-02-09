@@ -5,10 +5,14 @@ import {
   Submission 
 } from '@/lib/submissions'
 import { sendSubmissionNotification } from '@/lib/slack-notifications'
+import { requireAuth, handleAuthError } from '@/lib/session'
 
 // GET /api/submissions - List all submissions with optional filters
 export async function GET(request: NextRequest) {
   try {
+    // Require authentication
+    await requireAuth()
+
     const { searchParams } = new URL(request.url)
     
     const status = searchParams.get('status') as Submission['status'] | null
@@ -33,6 +37,10 @@ export async function GET(request: NextRequest) {
       count: submissions.length
     })
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error fetching submissions:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch submissions' },
@@ -44,6 +52,9 @@ export async function GET(request: NextRequest) {
 // POST /api/submissions - Create a new submission
 export async function POST(request: NextRequest) {
   try {
+    // Require authentication
+    await requireAuth()
+
     const body = await request.json()
 
     // Validate required fields
@@ -113,6 +124,10 @@ export async function POST(request: NextRequest) {
       message: `Submission ${submission.id} created successfully`
     }, { status: 201 })
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error creating submission:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to create submission' },

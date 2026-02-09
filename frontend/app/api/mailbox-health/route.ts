@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth, handleAuthError } from '@/lib/session'
 
 const INSTANTLY_API_BASE = 'https://api.instantly.ai/api/v2'
 const BISON_API_BASE = 'https://send.leadgenjay.com/api'
@@ -618,8 +619,11 @@ async function fetchMailboxHealthData(): Promise<{
   return { summary, mailboxes: allMailboxes }
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    // Require authentication
+    await requireAuth()
+
     const url = new URL(request.url)
     const forceRefresh = url.searchParams.get('refresh') === 'true'
 
@@ -663,6 +667,10 @@ export async function GET(request: Request) {
     }
     
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error fetching mailbox health:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch mailbox health' },

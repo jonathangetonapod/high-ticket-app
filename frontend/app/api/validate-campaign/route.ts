@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
 import Anthropic from "@anthropic-ai/sdk";
+import { requireAuth, handleAuthError } from "@/lib/session";
+import { validateCampaignRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 // Types
 interface EmailSequence {
@@ -384,6 +386,15 @@ Be specific and actionable. Reference the best practices by name when applicable
 
 export async function POST(request: NextRequest) {
   try {
+    // Check rate limit
+    const rateLimitResult = await validateCampaignRateLimiter.check(request)
+    if (!rateLimitResult.success) {
+      return rateLimitResponse(rateLimitResult)
+    }
+
+    // Require authentication
+    await requireAuth()
+
     // Check for API key
     if (!process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json(
@@ -559,6 +570,10 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error);
+    if (authResponse) return authResponse;
+
     console.error("Campaign validation error:", error);
 
     // Handle specific error types

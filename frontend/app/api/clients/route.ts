@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import { getAllClients } from '@/lib/sheets'
+import { requireAuth, handleAuthError } from '@/lib/session'
 
 export async function GET() {
   try {
+    // Require authentication
+    await requireAuth()
+
     console.log('Fetching clients from Google Sheets...')
 
     // Fetch from real Google Sheet (same one used by BridgeKit MCP)
@@ -26,6 +30,10 @@ export async function GET() {
     })
 
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error fetching clients:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch clients' },

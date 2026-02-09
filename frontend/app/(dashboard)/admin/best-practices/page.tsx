@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { toast } from 'sonner'
 import { Header } from '@/components/layout/Header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -160,11 +161,12 @@ export default function AdminBestPracticesPage() {
             : g
         ))
         setSelectedGuide({ ...selectedGuide, title: editTitle, category: editCategory, content: editContent })
+        toast.success('Guide saved successfully')
       } else {
-        alert(data.error)
+        toast.error(data.error)
       }
     } catch (error) {
-      alert('Failed to save')
+      toast.error('Failed to save')
     } finally {
       setSaving(false)
     }
@@ -194,11 +196,12 @@ export default function AdminBestPracticesPage() {
         setNewCategory('general')
         setNewContent('# New Guide\n\nAdd your content here...')
         selectGuide(data.guide)
+        toast.success('Guide created successfully')
       } else {
-        alert(data.error)
+        toast.error(data.error)
       }
     } catch (error) {
-      alert('Failed to create')
+      toast.error('Failed to create')
     } finally {
       setCreating(false)
     }
@@ -227,11 +230,12 @@ export default function AdminBestPracticesPage() {
         }
         setDeleteDialogOpen(false)
         setGuideToDelete(null)
+        toast.success('Guide deleted')
       } else {
-        alert(data.error)
+        toast.error(data.error)
       }
     } catch (error) {
-      alert('Failed to delete')
+      toast.error('Failed to delete')
     } finally {
       setDeleting(false)
     }
@@ -265,7 +269,7 @@ export default function AdminBestPracticesPage() {
       const data = JSON.parse(text)
       
       if (!data.guides || !Array.isArray(data.guides)) {
-        alert('Invalid file format. Expected { guides: [...] }')
+        toast.error('Invalid file format. Expected { guides: [...] }')
         return
       }
 
@@ -293,10 +297,10 @@ export default function AdminBestPracticesPage() {
         }
       }
 
-      alert(`Successfully imported ${imported} guide(s)`)
+      toast.success(`Successfully imported ${imported} guide(s)`)
       loadGuides() // Reload all guides
     } catch (error) {
-      alert('Failed to parse import file')
+      toast.error('Failed to parse import file')
     }
 
     // Reset file input

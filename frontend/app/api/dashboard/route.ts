@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getAllClients } from '@/lib/sheets'
+import { requireAuth, handleAuthError } from '@/lib/session'
 
 // Operations KPI Google Sheet - Monthly Report tab (gid=1715408545)
 const OPS_SHEET_ID = '1AEWdpQc0HuIEK5ke-Jj9hEyze7-evGzfQxnG-mdiSpM'
@@ -633,8 +634,11 @@ function calculateClientPerformance(): { top5: ClientPerformance[], bottom5: Cli
   }
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
+    // Require authentication
+    await requireAuth()
+
     const url = new URL(request.url)
     const forceRefresh = url.searchParams.get('refresh') === 'true'
     
@@ -711,6 +715,10 @@ export async function GET(request: Request) {
       ...dashboardData
     })
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error fetching dashboard data:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch dashboard data' },

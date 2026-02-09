@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server'
 import { listInstantlyCampaigns } from '@/lib/instantly'
 import { listBisonCampaigns } from '@/lib/bison'
+import { requireAuth, handleAuthError } from '@/lib/session'
 
 export async function GET(request: Request) {
   try {
+    // Require authentication
+    await requireAuth()
+
     const { searchParams } = new URL(request.url)
     const clientName = searchParams.get('clientName')
     const platform = searchParams.get('platform')
@@ -52,6 +56,10 @@ export async function GET(request: Request) {
       )
     }
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error fetching campaigns:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to fetch campaigns' },

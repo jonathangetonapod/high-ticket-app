@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Search, User, LogOut, ChevronDown } from 'lucide-react'
+import { Bell, Search, User, LogOut, ChevronDown, Shield } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,35 +13,30 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useAuth } from '@/components/auth/AuthProvider'
+import { getRoleDisplayName, getRoleColor } from '@/lib/auth'
 
 interface HeaderProps {
   title: string
   description?: string
 }
 
-interface UserSession {
-  id: string
-  email: string
-  name: string
-  role: 'admin' | 'strategist'
-}
-
 export function Header({ title, description }: HeaderProps) {
   const router = useRouter()
-  const [user, setUser] = useState<UserSession | null>(null)
-
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then(res => res.json())
-      .then(data => {
-        if (data.user) setUser(data.user)
-      })
-      .catch(() => {})
-  }, [])
+  const { user, signOut, loading } = useAuth()
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    router.push('/login')
+    await signOut()
+  }
+
+  const roleColor = user?.profile?.role 
+    ? getRoleColor(user.profile.role) 
+    : 'gray'
+
+  const roleColorClasses: Record<string, string> = {
+    purple: 'bg-purple-100 text-purple-700',
+    blue: 'bg-blue-100 text-blue-700',
+    gray: 'bg-gray-100 text-gray-700',
   }
 
   return (
@@ -77,23 +72,31 @@ export function Header({ title, description }: HeaderProps) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex items-center gap-2">
-                <User size={18} />
-                {user && (
+                {user?.profile?.role === 'admin' ? (
+                  <Shield size={18} className="text-purple-600" />
+                ) : (
+                  <User size={18} />
+                )}
+                {user && !loading && (
                   <>
-                    <span className="hidden sm:inline text-sm">{user.name}</span>
+                    <span className="hidden sm:inline text-sm">
+                      {user.profile?.full_name || user.email}
+                    </span>
                     <ChevronDown size={14} />
                   </>
                 )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              {user && (
+              {user && user.profile && (
                 <>
                   <DropdownMenuLabel>
                     <div className="flex flex-col">
-                      <span>{user.name}</span>
+                      <span>{user.profile.full_name}</span>
                       <span className="text-xs text-gray-500 font-normal">{user.email}</span>
-                      <span className="text-xs text-blue-600 font-medium capitalize mt-1">{user.role}</span>
+                      <Badge className={`w-fit mt-2 ${roleColorClasses[roleColor]}`}>
+                        {getRoleDisplayName(user.profile.role)}
+                      </Badge>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
@@ -101,7 +104,7 @@ export function Header({ title, description }: HeaderProps) {
               )}
               <DropdownMenuItem onClick={handleLogout} className="text-red-600 cursor-pointer">
                 <LogOut size={16} className="mr-2" />
-                Log out
+                Sign Out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

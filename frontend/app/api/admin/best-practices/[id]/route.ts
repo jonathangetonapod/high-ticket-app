@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 import { createServerClient } from '@/lib/supabase/server'
+import { UpdateBestPracticeSchema } from '@/lib/validations/best-practice'
+import { successResponse, errorResponse, validationErrorResponse } from '@/lib/api-response'
+import { requireAuth, requireAdmin, handleAuthError } from '@/lib/session'
 
 interface Guide {
   id: string
@@ -18,26 +20,15 @@ interface BestPracticeRow {
   updated_at: string
 }
 
-// Check if user is admin
-async function isAdmin(): Promise<boolean> {
-  try {
-    const cookieStore = await cookies()
-    const session = cookieStore.get('session')
-    if (!session?.value) return false
-    
-    const user = JSON.parse(Buffer.from(session.value, 'base64').toString())
-    return user.role === 'admin'
-  } catch {
-    return false
-  }
-}
-
-// GET - Get single guide
+// GET - Get single guide (requires auth)
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Require authentication to view guides
+    await requireAuth()
+
     const { id } = await params
     const supabase = createServerClient()
     
@@ -48,10 +39,7 @@ export async function GET(
       .single()
 
     if (error || !data) {
-      return NextResponse.json(
-        { success: false, error: 'Guide not found' },
-        { status: 404 }
-      )
+      return errorResponse('Guide not found', 404)
     }
 
     const row = data as BestPracticeRow
@@ -63,13 +51,14 @@ export async function GET(
       updatedAt: row.updated_at
     }
 
-    return NextResponse.json({ success: true, guide })
+    return successResponse({ guide })
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error reading guide:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to load guide' },
-      { status: 500 }
-    )
+    return errorResponse('Failed to load guide', 500)
   }
 }
 
@@ -78,16 +67,21 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!await isAdmin()) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
-    )
-  }
-
   try {
+    // Require admin access for updating guides
+    await requireAdmin()
+
     const { id } = await params
-    const { title, category, content } = await request.json()
+    const body = await request.json()
+    
+    // Validate with Zod
+    const result = UpdateBestPracticeSchema.safeParse(body)
+    
+    if (!result.success) {
+      return validationErrorResponse(result.error)
+    }
+
+    const { title, category, content } = result.data
     
     const supabase = createServerClient()
 
@@ -110,16 +104,10 @@ export async function PUT(
 
     if (error || !data) {
       if (error?.code === 'PGRST116') {
-        return NextResponse.json(
-          { success: false, error: 'Guide not found' },
-          { status: 404 }
-        )
+        return errorResponse('Guide not found', 404)
       }
       console.error('Error updating guide:', error)
-      return NextResponse.json(
-        { success: false, error: 'Failed to update guide' },
-        { status: 500 }
-      )
+      return errorResponse('Failed to update guide', 500)
     }
 
     const row = data as BestPracticeRow
@@ -131,14 +119,15 @@ export async function PUT(
       updatedAt: row.updated_at
     }
 
-    return NextResponse.json({ success: true, guide })
+    return successResponse({ guide })
 
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error updating guide:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to update guide' },
-      { status: 500 }
-    )
+    return errorResponse('Failed to update guide', 500)
   }
 }
 
@@ -147,14 +136,10 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!await isAdmin()) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
-    )
-  }
-
   try {
+    // Require admin access for deleting guides
+    await requireAdmin()
+
     const { id } = await params
     const supabase = createServerClient()
 
@@ -166,10 +151,7 @@ export async function DELETE(
       .single()
 
     if (!existing) {
-      return NextResponse.json(
-        { success: false, error: 'Guide not found' },
-        { status: 404 }
-      )
+      return errorResponse('Guide not found', 404)
     }
 
     const { error } = await (supabase as any)
@@ -179,19 +161,17 @@ export async function DELETE(
 
     if (error) {
       console.error('Error deleting guide:', error)
-      return NextResponse.json(
-        { success: false, error: 'Failed to delete guide' },
-        { status: 500 }
-      )
+      return errorResponse('Failed to delete guide', 500)
     }
 
-    return NextResponse.json({ success: true })
+    return successResponse({ deleted: true })
 
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error deleting guide:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to delete guide' },
-      { status: 500 }
-    )
+    return errorResponse('Failed to delete guide', 500)
   }
 }

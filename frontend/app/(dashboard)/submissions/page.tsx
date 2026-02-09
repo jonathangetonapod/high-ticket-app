@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
+import { toast } from 'sonner'
 import { Header } from '@/components/layout/Header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -50,6 +51,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { SkeletonTable, SkeletonDashboardCards } from '@/components/ui/skeleton'
 import {
   CheckCircle,
   XCircle,
@@ -280,12 +282,13 @@ export default function SubmissionsPage() {
         setConfirmOpen(false)
         setReviewNotes('')
         loadSubmissions()
+        toast.success('Submission updated successfully')
       } else {
-        alert(`Failed to update: ${data.error}`)
+        toast.error(`Failed to update: ${data.error}`)
       }
     } catch (error) {
       console.error('Error updating submission:', error)
-      alert('Failed to update submission')
+      toast.error('Failed to update submission')
     } finally {
       setUpdating(false)
     }
@@ -317,12 +320,13 @@ export default function SubmissionsPage() {
 
       if (data.success) {
         loadSubmissions()
+        toast.success('Submission approved')
       } else {
-        alert(`Failed to update: ${data.error}`)
+        toast.error(`Failed to update: ${data.error}`)
       }
     } catch (error) {
       console.error('Error updating submission:', error)
-      alert('Failed to update submission')
+      toast.error('Failed to update submission')
     } finally {
       setUpdating(false)
     }
@@ -331,7 +335,7 @@ export default function SubmissionsPage() {
   const handleBatchAction = async () => {
     if (selectedIds.size === 0) return
     if (batchAction === 'rejected' && !batchNotes.trim()) {
-      alert('Please provide notes explaining why these submissions were rejected.')
+      toast.error('Please provide notes explaining why these submissions were rejected.')
       return
     }
 
@@ -357,9 +361,10 @@ export default function SubmissionsPage() {
       setBatchNotes('')
       setSelectedIds(new Set())
       loadSubmissions()
+      toast.success(`Successfully ${batchAction} ${selectedIds.size} submissions`)
     } catch (error) {
       console.error('Error processing batch action:', error)
-      alert('Failed to process some submissions')
+      toast.error('Failed to process some submissions')
     } finally {
       setBatchUpdating(false)
     }
@@ -367,7 +372,7 @@ export default function SubmissionsPage() {
 
   const openReviewConfirm = () => {
     if (reviewAction === 'rejected' && !reviewNotes.trim()) {
-      alert('Please provide notes explaining why this submission was rejected.')
+      toast.error('Please provide notes explaining why this submission was rejected.')
       return
     }
     setConfirmOpen(true)
@@ -683,8 +688,8 @@ export default function SubmissionsPage() {
           <Card>
             <CardContent className="p-0">
               {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="animate-spin text-gray-400" size={32} />
+                <div className="p-4">
+                  <SkeletonTable rows={5} columns={9} />
                 </div>
               ) : paginatedSubmissions.length === 0 ? (
                 <div className="text-center py-12">
@@ -760,11 +765,13 @@ export default function SubmissionsPage() {
                                 size="sm"
                                 className="h-8 w-8 p-0"
                                 onClick={() => toggleRowExpand(submission.id)}
+                                aria-label={isExpanded ? 'Collapse row details' : 'Expand row details'}
+                                aria-expanded={isExpanded}
                               >
                                 {isExpanded ? (
-                                  <ChevronUp size={16} className="text-gray-400" />
+                                  <ChevronUp size={16} className="text-gray-400" aria-hidden="true" />
                                 ) : (
-                                  <ChevronDown size={16} className="text-gray-400" />
+                                  <ChevronDown size={16} className="text-gray-400" aria-hidden="true" />
                                 )}
                               </Button>
                             </TableCell>
@@ -848,8 +855,9 @@ export default function SubmissionsPage() {
                                           className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                                           onClick={() => handleQuickAction(submission, 'approved')}
                                           disabled={updating}
+                                          aria-label="Quick approve submission"
                                         >
-                                          <ThumbsUp size={16} />
+                                          <ThumbsUp size={16} aria-hidden="true" />
                                         </Button>
                                       </TooltipTrigger>
                                       <TooltipContent>Quick Approve</TooltipContent>
@@ -862,8 +870,9 @@ export default function SubmissionsPage() {
                                           className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                                           onClick={() => handleQuickAction(submission, 'rejected')}
                                           disabled={updating}
+                                          aria-label="Reject submission"
                                         >
-                                          <ThumbsDown size={16} />
+                                          <ThumbsDown size={16} aria-hidden="true" />
                                         </Button>
                                       </TooltipTrigger>
                                       <TooltipContent>Reject</TooltipContent>

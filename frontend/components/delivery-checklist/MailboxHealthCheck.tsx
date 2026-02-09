@@ -19,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { SkeletonMailboxList } from '@/components/ui/skeleton'
 import { ValidationResult } from './types'
 
 interface MailboxHealth {
@@ -219,12 +220,18 @@ export function MailboxHealthCheck({
                   size="lg"
                   onClick={() => loadMailboxes(true)}
                   disabled={loading}
+                  aria-label="Force refresh mailbox data"
                 >
-                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
                   {cacheInfo?.cached ? `${cacheInfo.cacheAge}s` : ''}
                 </Button>
               )}
             </div>
+
+            {/* Loading Skeleton */}
+            {loading && !loaded && (
+              <SkeletonMailboxList count={3} />
+            )}
 
             {/* Results */}
             {loaded && (
@@ -422,15 +429,17 @@ export function MailboxHealthCheck({
                           variant="ghost"
                           className="w-full"
                           onClick={() => setShowAll(!showAll)}
+                          aria-expanded={showAll}
+                          aria-label={showAll ? 'Show less mailboxes' : `Show all ${filteredMailboxes.length} mailboxes`}
                         >
                           {showAll ? (
                             <>
-                              <ChevronUp className="h-4 w-4 mr-1" />
+                              <ChevronUp className="h-4 w-4 mr-1" aria-hidden="true" />
                               Show Less
                             </>
                           ) : (
                             <>
-                              <ChevronDown className="h-4 w-4 mr-1" />
+                              <ChevronDown className="h-4 w-4 mr-1" aria-hidden="true" />
                               Show All {filteredMailboxes.length} Mailboxes
                             </>
                           )}

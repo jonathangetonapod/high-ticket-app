@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import { requireAuth, handleAuthError } from '@/lib/session'
+import { extractICPRateLimiter, rateLimitResponse } from '@/lib/rate-limit'
 
 export interface ExtractedICP {
   targetTitles: string[]
@@ -50,6 +52,15 @@ TRANSCRIPT:
 
 export async function POST(request: NextRequest): Promise<NextResponse<ICPExtractionResponse>> {
   try {
+    // Check rate limit
+    const rateLimitResult = await extractICPRateLimiter.check(request)
+    if (!rateLimitResult.success) {
+      return rateLimitResponse(rateLimitResult) as NextResponse<ICPExtractionResponse>
+    }
+
+    // Require authentication
+    await requireAuth()
+
     const { transcript, clientName } = await request.json()
 
     if (!transcript || transcript.trim().length < 50) {
@@ -133,6 +144,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<ICPExtrac
     })
 
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse as NextResponse<ICPExtractionResponse>
+
     console.error('ICP extraction error:', error)
     return NextResponse.json({
       success: false,

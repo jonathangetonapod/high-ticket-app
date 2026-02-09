@@ -1,28 +1,56 @@
 import { NextResponse } from 'next/server'
-import { getUserById, updateUser, deleteUser } from '@/lib/users'
-import { cookies } from 'next/headers'
+import { createServerClient } from '@/lib/supabase/server'
+import { generateSecurePassword } from '@/lib/auth'
+import type { UserProfileRow } from '@/lib/supabase/types'
+import { requireAdmin, handleAuthError, getCurrentUser } from '@/lib/session'
 
-// Generate a random password
-function generatePassword(): string {
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-  let password = ''
-  for (let i = 0; i < 12; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return password
-}
-
-// Check if user is admin
-async function isAdmin(): Promise<boolean> {
+// GET - Get user details (admin only)
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const cookieStore = await cookies()
-    const session = cookieStore.get('session')
-    if (!session?.value) return false
-    
-    const user = JSON.parse(Buffer.from(session.value, 'base64').toString())
-    return user.role === 'admin'
-  } catch {
-    return false
+    // Require admin access
+    await requireAdmin()
+
+    const { id } = await params
+    const supabase = createServerClient()
+
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    const user = data as UserProfileRow | null
+
+    if (error || !user) {
+      return NextResponse.json(
+        { success: false, error: 'User not found' },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.full_name,
+        role: user.role,
+        createdAt: user.created_at,
+      },
+    })
+  } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
+    console.error('Error fetching user:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch user' },
+      { status: 500 }
+    )
   }
 }
 
@@ -31,24 +59,45 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!await isAdmin()) {
+  try {
+    // Require admin access
+    const currentUser = await requireAdmin()
+
+    const { id } = await params
+
+    // Prevent self-deletion
+    if (id === currentUser.id) {
+      return NextResponse.json(
+        { success: false, error: 'Cannot delete your own account' },
+        { status: 400 }
+      )
+    }
+
+    const supabase = createServerClient()
+
+    // Delete auth user (profile cascades)
+    const { error } = await supabase.auth.admin.deleteUser(id)
+
+    if (error) {
+      console.error('Error deleting user:', error)
+      return NextResponse.json(
+        { success: false, error: 'Failed to delete user' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
+    console.error('Error deleting user:', error)
     return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
+      { success: false, error: 'Failed to delete user' },
+      { status: 500 }
     )
   }
-
-  const { id } = await params
-  const success = await deleteUser(id)
-
-  if (!success) {
-    return NextResponse.json(
-      { success: false, error: 'User not found' },
-      { status: 404 }
-    )
-  }
-
-  return NextResponse.json({ success: true })
 }
 
 // POST - Reset password (admin only)
@@ -56,35 +105,54 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!await isAdmin()) {
-    return NextResponse.json(
-      { success: false, error: 'Unauthorized' },
-      { status: 403 }
-    )
-  }
+  try {
+    // Require admin access
+    await requireAdmin()
 
-  const { id } = await params
-  const user = await getUserById(id)
+    const { id } = await params
+    const supabase = createServerClient()
 
-  if (!user) {
-    return NextResponse.json(
-      { success: false, error: 'User not found' },
-      { status: 404 }
-    )
-  }
+    // Check user exists
+    const { data, error: findError } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('id', id)
+      .single()
 
-  const newPassword = generatePassword()
-  const success = await updateUser(id, { password: newPassword })
+    if (findError || !data) {
+      return NextResponse.json(
+        { success: false, error: 'User not found' },
+        { status: 404 }
+      )
+    }
 
-  if (!success) {
+    const newPassword = generateSecurePassword(12)
+
+    const { error } = await supabase.auth.admin.updateUserById(id, {
+      password: newPassword,
+    })
+
+    if (error) {
+      console.error('Error resetting password:', error)
+      return NextResponse.json(
+        { success: false, error: 'Failed to reset password' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      newPassword,
+    })
+  } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
+    console.error('Error resetting password:', error)
     return NextResponse.json(
       { success: false, error: 'Failed to reset password' },
       { status: 500 }
     )
   }
-
-  return NextResponse.json({
-    success: true,
-    newPassword
-  })
 }

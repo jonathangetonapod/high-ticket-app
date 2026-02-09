@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { ClientContextSchema } from '@/lib/validations/client-context'
+import { successResponse, errorResponse, validationErrorResponse } from '@/lib/api-response'
+import { requireAuth, handleAuthError } from '@/lib/session'
 
 interface ClientContext {
   clientId: string
@@ -26,6 +29,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Require authentication
+    await requireAuth()
+
     const { id } = await params
     const clientId = slugify(decodeURIComponent(id))
     
@@ -41,10 +47,7 @@ export async function GET(
     if (error && error.code !== 'PGRST116') {
       // PGRST116 = no rows returned (which is fine, just means no context yet)
       console.error('Error reading client context:', error)
-      return NextResponse.json(
-        { success: false, error: 'Failed to read client context' },
-        { status: 500 }
-      )
+      return errorResponse('Failed to read client context', 500)
     }
     
     if (!data) {
@@ -61,11 +64,7 @@ export async function GET(
         slackChannelName: ''
       }
       
-      return NextResponse.json({
-        success: true,
-        context: emptyContext,
-        isNew: true
-      })
+      return successResponse({ context: emptyContext, isNew: true })
     }
     
     // Transform database row to ClientContext
@@ -81,16 +80,14 @@ export async function GET(
       slackChannelName: data.slack_channel_name || ''
     }
     
-    return NextResponse.json({
-      success: true,
-      context
-    })
+    return successResponse({ context })
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error reading client context:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to read client context' },
-      { status: 500 }
-    )
+    return errorResponse('Failed to read client context', 500)
   }
 }
 
@@ -99,23 +96,35 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Require authentication
+    await requireAuth()
+
     const { id } = await params
     const clientId = slugify(decodeURIComponent(id))
     const body = await request.json()
+    
+    // Validate with Zod
+    const result = ClientContextSchema.safeParse(body)
+    
+    if (!result.success) {
+      return validationErrorResponse(result.error)
+    }
+
+    const validatedData = result.data
     
     const supabase = createServerClient()
     
     const contextData = {
       client_id: clientId,
-      client_name: body.clientName || decodeURIComponent(id),
-      icp_summary: body.icpSummary || '',
-      special_requirements: body.specialRequirements || '',
-      transcript_notes: body.transcriptNotes || '',
+      client_name: validatedData.clientName || decodeURIComponent(id),
+      icp_summary: validatedData.icpSummary || '',
+      special_requirements: validatedData.specialRequirements || '',
+      transcript_notes: validatedData.transcriptNotes || '',
       updated_at: new Date().toISOString(),
       // Communication tracking fields
-      client_email: body.clientEmail || '',
-      slack_channel_id: body.slackChannelId || '',
-      slack_channel_name: body.slackChannelName || ''
+      client_email: validatedData.clientEmail || '',
+      slack_channel_id: validatedData.slackChannelId || '',
+      slack_channel_name: validatedData.slackChannelName || ''
     }
     
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -127,10 +136,7 @@ export async function PUT(
     
     if (error) {
       console.error('Error saving client context:', error)
-      return NextResponse.json(
-        { success: false, error: 'Failed to save client context' },
-        { status: 500 }
-      )
+      return errorResponse('Failed to save client context', 500)
     }
     
     const context: ClientContext = {
@@ -145,16 +151,14 @@ export async function PUT(
       slackChannelName: data.slack_channel_name || ''
     }
     
-    return NextResponse.json({
-      success: true,
-      context
-    })
+    return successResponse({ context })
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error saving client context:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to save client context' },
-      { status: 500 }
-    )
+    return errorResponse('Failed to save client context', 500)
   }
 }
 
@@ -163,6 +167,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Require authentication
+    await requireAuth()
+
     const { id } = await params
     const clientId = slugify(decodeURIComponent(id))
     
@@ -176,19 +183,17 @@ export async function DELETE(
     
     if (error) {
       console.error('Error deleting client context:', error)
-      return NextResponse.json(
-        { success: false, error: 'Failed to delete client context' },
-        { status: 500 }
-      )
+      return errorResponse('Failed to delete client context', 500)
     }
     
-    return NextResponse.json({ success: true })
+    return successResponse({ deleted: true })
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse
+
     console.error('Error deleting client context:', error)
-    return NextResponse.json(
-      { success: false, error: 'Failed to delete client context' },
-      { status: 500 }
-    )
+    return errorResponse('Failed to delete client context', 500)
   }
 }
 

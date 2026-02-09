@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { Header } from '@/components/layout/Header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -86,12 +87,12 @@ export default function AdminRequirementsPage() {
             : r
         ))
         setSelectedReq({ ...selectedReq, content: editContent })
-        alert('Saved!')
+        toast.success('Saved!')
       } else {
-        alert(data.error)
+        toast.error(data.error)
       }
     } catch (error) {
-      alert('Failed to save')
+      toast.error('Failed to save')
     } finally {
       setSaving(false)
     }
@@ -115,11 +116,12 @@ export default function AdminRequirementsPage() {
         setShowNewForm(false)
         setNewSlug('')
         setNewContent('# New Requirement\n\nAdd your requirements here...')
+        toast.success('Requirement created')
       } else {
-        alert(data.error)
+        toast.error(data.error)
       }
     } catch (error) {
-      alert('Failed to create')
+      toast.error('Failed to create')
     } finally {
       setCreating(false)
     }
@@ -139,11 +141,12 @@ export default function AdminRequirementsPage() {
       if (data.success) {
         setRequirements(requirements.filter(r => r.slug !== selectedReq.slug))
         setSelectedReq(null)
+        toast.success('Requirement deleted')
       } else {
-        alert(data.error)
+        toast.error(data.error)
       }
     } catch (error) {
-      alert('Failed to delete')
+      toast.error('Failed to delete')
     }
   }
 

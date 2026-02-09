@@ -6,6 +6,8 @@ import {
   validateSingleEmail,
   extractDomain,
 } from '@/lib/lead-validation'
+import { requireAuth, handleAuthError } from '@/lib/session'
+import { processLeadsRateLimiter, rateLimitResponse } from '@/lib/rate-limit'
 
 // =============================================================================
 // Types
@@ -411,6 +413,15 @@ export async function POST(
   request: NextRequest
 ): Promise<NextResponse<ProcessingResult | ProcessingError>> {
   try {
+    // Check rate limit
+    const rateLimitResult = await processLeadsRateLimiter.check(request)
+    if (!rateLimitResult.success) {
+      return rateLimitResponse(rateLimitResult) as NextResponse<ProcessingError>
+    }
+
+    // Require authentication
+    await requireAuth()
+
     // Parse multipart form data
     const formData = await request.formData()
     
@@ -468,6 +479,10 @@ export async function POST(
     return NextResponse.json(result)
     
   } catch (error) {
+    // Handle auth errors
+    const authResponse = handleAuthError(error)
+    if (authResponse) return authResponse as NextResponse<ProcessingError>
+
     console.error('Error processing CSV:', error)
     
     // Handle specific error types

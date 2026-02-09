@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
+import { toast } from 'sonner'
 import {
   CheckCircle,
   XCircle,
@@ -1085,7 +1086,7 @@ export default function DeliveryChecklistPage() {
   // Validate All - runs all validations in sequence using real validation logic
   const handleValidateAll = async () => {
     if (selectedCampaignsDetails.length === 0) {
-      alert('Please select at least one campaign first')
+      toast.error('Please select at least one campaign first')
       return
     }
 

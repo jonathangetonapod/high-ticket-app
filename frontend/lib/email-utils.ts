@@ -358,7 +358,8 @@ export function downloadIssuesReport(
   }
   
   if (issues.length === 0) {
-    alert('No issues found to export!')
+    // Note: This should be called with a toast from the component level
+    console.warn('No issues found to export')
     return
   }
   

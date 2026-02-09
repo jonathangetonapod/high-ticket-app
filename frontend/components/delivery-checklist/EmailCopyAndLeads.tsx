@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import { toast } from 'sonner'
 import { Mail, Loader2, Info, Sparkles, Wand2, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -161,7 +162,7 @@ export function EmailCopyAndLeads({
       const lines = text.trim().split('\n')
 
       if (lines.length < 2) {
-        alert('CSV file appears to be empty or invalid')
+        toast.error('CSV file appears to be empty or invalid')
         return
       }
 
@@ -229,7 +230,7 @@ export function EmailCopyAndLeads({
       }
     } catch (error) {
       console.error('Error parsing/processing CSV:', error)
-      alert('Failed to parse CSV file. Please check the file format.')
+      toast.error('Failed to parse CSV file. Please check the file format.')
     } finally {
       setUploadingCampaignId(null)
       setProcessingCampaignId(null)
