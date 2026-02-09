@@ -77,7 +77,7 @@ interface ClientCommunication {
 async function ensureTable() {
   try {
     // Try to create the table if it doesn't exist
-    const { error } = await getSupabase().rpc('exec_sql', {
+    const { error } = await getSupabase().rpc('exec_sql' as any, {
       sql: `
         CREATE TABLE IF NOT EXISTS client_communications (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

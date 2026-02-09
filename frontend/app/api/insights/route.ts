@@ -6,7 +6,7 @@ const getSupabase = () => createServerClient()
 // Ensure table exists (best effort - table should be created via migration)
 async function ensureTable() {
   try {
-    await getSupabase().rpc('exec_sql', {
+    await getSupabase().rpc('exec_sql' as any, {
       sql: `
         CREATE TABLE IF NOT EXISTS daily_insights (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
