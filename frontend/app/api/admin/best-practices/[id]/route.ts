@@ -10,6 +10,14 @@ interface Guide {
   updatedAt: string
 }
 
+interface BestPracticeRow {
+  id: string
+  title: string
+  category: string
+  content: string
+  updated_at: string
+}
+
 // Check if user is admin
 async function isAdmin(): Promise<boolean> {
   try {
@@ -46,12 +54,13 @@ export async function GET(
       )
     }
 
+    const row = data as BestPracticeRow
     const guide: Guide = {
-      id: data.id,
-      title: data.title,
-      category: data.category,
-      content: data.content,
-      updatedAt: data.updated_at
+      id: row.id,
+      title: row.title,
+      category: row.category,
+      content: row.content,
+      updatedAt: row.updated_at
     }
 
     return NextResponse.json({ success: true, guide })
@@ -112,12 +121,13 @@ export async function PUT(
       )
     }
 
+    const row = data as BestPracticeRow
     const guide: Guide = {
-      id: data.id,
-      title: data.title,
-      category: data.category,
-      content: data.content,
-      updatedAt: data.updated_at
+      id: row.id,
+      title: row.title,
+      category: row.category,
+      content: row.content,
+      updatedAt: row.updated_at
     }
 
     return NextResponse.json({ success: true, guide })
