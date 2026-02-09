@@ -43,12 +43,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
-  const supabase = createClient()
+
+  // Only create Supabase client after component mounts (client-side only)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const supabase = mounted ? createClient() : null
 
   // Fetch current user and profile
   const fetchUser = useCallback(async () => {
+    if (!supabase) return
+    
     try {
       const { data: { session } } = await supabase.auth.getSession()
       
@@ -82,18 +91,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase])
 
-  // Initial load
+  // Initial load - only run once supabase is ready
   useEffect(() => {
+    if (!supabase) return
+    
     const initAuth = async () => {
       setLoading(true)
       await fetchUser()
       setLoading(false)
     }
     initAuth()
-  }, [fetchUser])
+  }, [supabase, fetchUser])
 
   // Listen for auth changes
   useEffect(() => {
+    if (!supabase) return
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
@@ -107,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.unsubscribe()
     }
-  }, [supabase.auth, fetchUser])
+  }, [supabase, fetchUser])
 
   // Redirect logic
   useEffect(() => {
@@ -130,6 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Sign in
   const signIn = async (email: string, password: string) => {
+    if (!supabase) throw new Error('Not initialized')
     setError(null)
     
     const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -156,6 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Sign out
   const signOut = async () => {
+    if (!supabase) return
     await supabase.auth.signOut()
     setUser(null)
     router.push('/login')
