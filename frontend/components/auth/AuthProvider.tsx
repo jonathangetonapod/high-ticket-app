@@ -177,10 +177,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw signInError
     }
 
-    console.log('Sign in successful, fetching user data...')
-    // Fetch user data
-    await fetchUser()
-    console.log('User data fetched')
+    console.log('Sign in successful!')
+    // Don't wait for fetchUser - the auth state change listener will handle it
+    // Just return success so the login page can redirect
   }
 
   // Sign out
